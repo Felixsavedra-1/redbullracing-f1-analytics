@@ -16,6 +16,7 @@ Data analytics project tracking Oracle Red Bull Racing F1 performance using SQL,
 - ✅ Complex SQL queries for KPI analysis
 - ✅ Performance tracking and insights
 - ✅ End-to-end data pipeline
+- ✅ Interactive Power BI Dashboard
 
 ## KPIs Tracked
 
@@ -137,7 +138,20 @@ f1-redbull-analytics/
 └── README.md
 ```
 
+```
+
 ---
+
+## Dashboard
+
+The project includes a Power BI dashboard for visual analytics.
+
+### Features
+- **Executive Summary**: High-level team KPIs.
+- **Driver Analysis**: Head-to-head performance metrics.
+- **Technical Metrics**: Pit stop efficiency and reliability stats.
+
+For more details, see the [Power BI Documentation](powerbi/README.md).
 
 ## Available Queries
 
@@ -186,9 +200,8 @@ This project uses the [Ergast F1 API](http://ergast.com/mrd/), a free and open-s
 
 ## Next Steps
 
-1. **Power BI Integration** - Connect Power BI to the MySQL database for visualization
-2. **Scheduled Updates** - Set up cron jobs or scheduled tasks to update data regularly
-3. **Custom Analysis** - Add your own queries to `database/queries/analytical_queries.sql`
+1. **Scheduled Updates** - Set up cron jobs or scheduled tasks to update data regularly
+2. **Custom Analysis** - Add your own queries to `database/queries/analytical_queries.sql`
 4. **Dashboards** - Create visualizations using the query results
 
 ---
