@@ -13,13 +13,13 @@ Data analytics project tracking Oracle Red Bull Racing F1 performance using SQL,
 
 ## Features
 
-- ✅ Automated data extraction from F1 API
-- ✅ Normalized database with 10+ tables
-- ✅ Complex SQL queries for KPI analysis
-- ✅ Performance tracking and insights
-- ✅ End-to-end data pipeline
-- ✅ Interactive Jupyter Notebook analysis (2022-2024 highlighted)
-- ✅ Interactive Power BI Dashboard
+- Automated data extraction from the Ergast F1 API
+- Normalized analytical database with more than ten tables
+- SQL queries for a broad set of key performance indicators
+- Longitudinal performance tracking and descriptive statistics
+- End-to-end, scriptable data pipeline
+- Jupyter-based exploratory analysis (with 2022–2024 highlighted)
+- Power BI dashboard for interactive visualization
 
 ## KPIs Tracked
 
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Database Setup
-The project uses **SQLite** by default for portability. No installation is required!
+The project uses **SQLite** by default for portability; no additional database service is required.
 
 If you prefer **MySQL**:
 1. Install MySQL
@@ -57,9 +57,9 @@ python scripts/run_pipeline.py
 ```
 
 This will:
-1. Extract data from Ergast F1 API (2005-2024 by default)
+1. Extract data from the Ergast F1 API (2005–2024 by default)
 2. Transform and clean the data
-3. Load data into MySQL database
+3. Load data into the configured database
 
 **Option B: Run steps individually**
 ```bash
@@ -128,24 +128,18 @@ The project includes a comprehensive Jupyter notebook for interactive analysis a
    jupyter notebook
    ```
 
-2. **Open the Analysis Notebook:**
+2. **Open the analysis notebook:**
    - Navigate to `notebooks/F1_Analysis.ipynb`
    - The notebook includes:
      - Team performance overview and KPIs
-     - Season-by-season analysis with **2022-2024 highlighted**
+     - Season-by-season analysis with 2022–2024 highlighted
      - Driver comparison and statistics
-     - Detailed breakdown of recent performance (2022-2024)
-     - Interactive visualizations with Red Bull branding
+     - A focused analysis of recent performance (2022–2024)
+     - Visualizations styled with Red Bull team colours
 
 3. **Requirements:**
-   - Make sure you've run the data pipeline first to populate the database
-   - All dependencies are in `requirements.txt`
-
-The notebook features:
-- 📊 Highlighted visualizations for 2022-2024 seasons
-- 🏆 Performance metrics and win rates
-- 👥 Driver performance comparisons
-- 📈 Interactive charts with Red Bull color scheme
+   - Run the data pipeline first to populate the database.
+   - All dependencies are listed in `requirements.txt`.
 
 ---
 
@@ -212,20 +206,18 @@ For more details, see the [Power BI Documentation](powerbi/README.md).
 
 ## Troubleshooting
 
-### Database Connection Issues
-- Verify MySQL is running: `mysql.server status`
+### Database connection issues
+- Verify MySQL is running (if used): `mysql.server status`
 - Check credentials in `scripts/config.py`
-- Ensure database exists: `mysql -u root -p -e "SHOW DATABASES;"
+- Ensure the database exists: `mysql -u root -p -e "SHOW DATABASES;"`
 
-### API Rate Limiting
-- The extraction script includes rate limiting (0.5s delay between requests)
-- If you encounter issues, the script will continue from where it left off
-- You can run extraction in smaller year ranges to avoid timeouts
+### API rate limiting
+- The extraction script includes basic rate limiting (0.5s delay between requests).
+- For large ranges, you may prefer to run extraction in smaller year windows.
 
-### Missing Data
-- Some data (like pit stops) is only available from 2012 onwards
-- Driver numbers may not be available for all historical data
-- If extraction fails, check your internet connection and try again
+### Data availability
+- Some data (for example, pit stops) is only available from 2012 onward.
+- Driver numbers may not be available for all historical entries.
 
 ---
 

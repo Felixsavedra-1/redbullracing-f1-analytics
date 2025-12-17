@@ -1,9 +1,3 @@
-"""
-scripts/extract_data.py
-F1 Data Extraction from Ergast API
-Downloads raw F1 data from the Ergast API and saves to CSV files
-"""
-
 import requests
 import pandas as pd
 import os
@@ -20,54 +14,45 @@ class F1DataExtractor:
         os.makedirs(output_path, exist_ok=True)
     
     def _make_request(self, endpoint: str, limit: int = 1000, offset: int = 0) -> Optional[Dict]:
-        """Make API request with rate limiting"""
+        """Issue a single API request with basic rate limiting."""
         url = f"{self.BASE_URL}/{endpoint}.json?limit={limit}&offset={offset}"
         
         try:
             response = requests.get(url, timeout=30)
             response.raise_for_status()
-            time.sleep(0.5)  # Rate limiting - be respectful to the API
+            time.sleep(0.5)
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"❌ Error fetching {endpoint}: {e}")
+            print(f"Error fetching {endpoint}: {e}")
             return None
     
     def _extract_table(self, json_data: Dict, table_name: str) -> List[Dict]:
-        """Extract table data from API response"""
+        """Extract the main table payload from an Ergast response."""
         if not json_data or 'MRData' not in json_data:
             return []
         
         mr_data = json_data['MRData']
-        
-        # Find the table (e.g., "CircuitTable")
-        # If table_name is provided and exists, use it. Otherwise try to find a key ending in "Table"
         table_data = mr_data.get(table_name)
         if not table_data:
-            # Fallback: find any key ending in "Table"
             for key in mr_data.keys():
                 if key.endswith('Table'):
                     table_data = mr_data[key]
                     break
-        
         if not table_data:
             return []
-            
-        # Find the list inside the table
-        # Common patterns: CircuitTable -> Circuits, RaceTable -> Races
-        # But sometimes it varies, so we look for the list
+        
         for key, value in table_data.items():
             if isinstance(value, list):
                 return value
         
-        # Special case: StandingsTable -> StandingsLists
         if 'StandingsLists' in table_data:
             return table_data['StandingsLists']
-            
+        
         return []
     
     def extract_circuits(self):
-        """Extract circuits data"""
-        print("📥 Extracting circuits...")
+        """Extract circuits data."""
+        print("Extracting circuits...")
         all_circuits = []
         offset = 0
         limit = 100
@@ -91,7 +76,7 @@ class F1DataExtractor:
                     'country': location.get('country', ''),
                     'lat': float(location.get('lat', 0)) if location.get('lat') else None,
                     'lng': float(location.get('long', 0)) if location.get('long') else None,
-                    'altitude': None,  # Not available in API
+                    'altitude': None,
                     'url': circuit_info.get('url', '')
                 })
             
@@ -101,12 +86,12 @@ class F1DataExtractor:
         
         df = pd.DataFrame(all_circuits)
         df.to_csv(f'{self.output_path}circuits.csv', index=False)
-        print(f"✓ Extracted {len(df)} circuits")
+        print(f"Extracted {len(df)} circuits.")
         return df
     
     def extract_seasons(self):
-        """Extract seasons data"""
-        print("📥 Extracting seasons...")
+        """Extract seasons data."""
+        print("Extracting seasons...")
         data = self._make_request("seasons", limit=100)
         if not data:
             return None
@@ -122,12 +107,12 @@ class F1DataExtractor:
         
         df = pd.DataFrame(all_seasons)
         df.to_csv(f'{self.output_path}seasons.csv', index=False)
-        print(f"✓ Extracted {len(df)} seasons")
+        print(f"Extracted {len(df)} seasons.")
         return df
     
     def extract_constructors(self):
-        """Extract constructors data"""
-        print("📥 Extracting constructors...")
+        """Extract constructors data."""
+        print("Extracting constructors...")
         all_constructors = []
         offset = 0
         limit = 100
@@ -155,15 +140,14 @@ class F1DataExtractor:
             offset += limit
         
         df = pd.DataFrame(all_constructors)
-        # Add constructor_id
         df.insert(0, 'constructor_id', range(1, len(df) + 1))
         df.to_csv(f'{self.output_path}constructors.csv', index=False)
-        print(f"✓ Extracted {len(df)} constructors")
+        print(f"Extracted {len(df)} constructors.")
         return df
     
     def extract_drivers(self):
-        """Extract drivers data"""
-        print("📥 Extracting drivers...")
+        """Extract drivers data."""
+        print("Extracting drivers...")
         all_drivers = []
         offset = 0
         limit = 100
@@ -182,7 +166,7 @@ class F1DataExtractor:
                 dob = driver_info.get('dateOfBirth', '')
                 all_drivers.append({
                     'driver_ref': driver_info.get('driverId', ''),
-                    'driver_number': None,  # Not in basic API
+                    'driver_number': None,
                     'code': driver_info.get('code', ''),
                     'forename': driver_info.get('givenName', ''),
                     'surname': driver_info.get('familyName', ''),
@@ -198,12 +182,12 @@ class F1DataExtractor:
         df = pd.DataFrame(all_drivers)
         df.insert(0, 'driver_id', range(1, len(df) + 1))
         df.to_csv(f'{self.output_path}drivers.csv', index=False)
-        print(f"✓ Extracted {len(df)} drivers")
+        print(f"Extracted {len(df)} drivers.")
         return df
     
     def extract_races(self, start_year: int = 2005, end_year: int = 2024):
-        """Extract races data for a range of years"""
-        print(f"📥 Extracting races ({start_year}-{end_year})...")
+        """Extract race metadata for a range of years."""
+        print(f"Extracting races ({start_year}-{end_year})...")
         all_races = []
         
         for year in range(start_year, end_year + 1):
@@ -244,12 +228,12 @@ class F1DataExtractor:
         
         df = pd.DataFrame(all_races)
         df.to_csv(f'{self.output_path}races.csv', index=False)
-        print(f"✓ Extracted {len(df)} races")
+        print(f"Extracted {len(df)} races.")
         return df
     
     def extract_results(self, start_year: int = 2005, end_year: int = 2024):
-        """Extract race results"""
-        print(f"📥 Extracting results ({start_year}-{end_year})...")
+        """Extract race results."""
+        print(f"Extracting results ({start_year}-{end_year})...")
         all_results = []
         
         for year in range(start_year, end_year + 1):
@@ -308,12 +292,12 @@ class F1DataExtractor:
         
         df = pd.DataFrame(all_results)
         df.to_csv(f'{self.output_path}results.csv', index=False)
-        print(f"✓ Extracted {len(df)} results")
+        print(f"Extracted {len(df)} results.")
         return df
     
     def extract_qualifying(self, start_year: int = 2005, end_year: int = 2024):
-        """Extract qualifying results"""
-        print(f"📥 Extracting qualifying ({start_year}-{end_year})...")
+        """Extract qualifying results."""
+        print(f"Extracting qualifying ({start_year}-{end_year})...")
         all_qualifying = []
         
         for year in range(start_year, end_year + 1):
@@ -334,7 +318,6 @@ class F1DataExtractor:
                     if not isinstance(race_info, list):
                         race_info = [race_info]
                     
-                    # Get race_id from the parent race
                     parent_race = race
                     round_num = int(parent_race.get('round', 0)) if parent_race else 0
                     race_id = int(f"{year}{round_num:02d}") if parent_race else 0
@@ -360,12 +343,12 @@ class F1DataExtractor:
         
         df = pd.DataFrame(all_qualifying)
         df.to_csv(f'{self.output_path}qualifying.csv', index=False)
-        print(f"✓ Extracted {len(df)} qualifying results")
+        print(f"Extracted {len(df)} qualifying results.")
         return df
     
     def extract_pit_stops(self, start_year: int = 2012, end_year: int = 2024):
-        """Extract pit stops (available from 2012)"""
-        print(f"📥 Extracting pit stops ({start_year}-{end_year})...")
+        """Extract pit stop data (available from 2012 onward)."""
+        print(f"Extracting pit stops ({start_year}-{end_year})...")
         all_pit_stops = []
         
         for year in range(start_year, end_year + 1):
@@ -411,18 +394,17 @@ class F1DataExtractor:
         
         df = pd.DataFrame(all_pit_stops)
         df.to_csv(f'{self.output_path}pit_stops.csv', index=False)
-        print(f"✓ Extracted {len(df)} pit stops")
+        print(f"Extracted {len(df)} pit stops.")
         return df
     
     def extract_standings(self, start_year: int = 2005, end_year: int = 2024):
-        """Extract constructor and driver standings"""
-        print(f"📥 Extracting standings ({start_year}-{end_year})...")
+        """Extract constructor and driver standings."""
+        print(f"Extracting standings ({start_year}-{end_year})...")
         all_constructor_standings = []
         all_driver_standings = []
         
         for year in range(start_year, end_year + 1):
-            # Constructor standings
-            for round_num in range(1, 25):  # Max races per season
+            for round_num in range(1, 25):
                 data = self._make_request(f"{year}/{round_num}/constructorStandings")
                 if not data:
                     continue
@@ -455,7 +437,6 @@ class F1DataExtractor:
                                 'wins': int(cs.get('wins', 0))
                             })
             
-            # Driver standings
             for round_num in range(1, 25):
                 data = self._make_request(f"{year}/{round_num}/driverStandings")
                 if not data:
@@ -495,14 +476,14 @@ class F1DataExtractor:
         df_const.to_csv(f'{self.output_path}constructor_standings.csv', index=False)
         df_driver.to_csv(f'{self.output_path}driver_standings.csv', index=False)
         
-        print(f"✓ Extracted {len(df_const)} constructor standings")
-        print(f"✓ Extracted {len(df_driver)} driver standings")
+        print(f"Extracted {len(df_const)} constructor standings.")
+        print(f"Extracted {len(df_driver)} driver standings.")
         return df_const, df_driver
     
     def extract_all(self, start_year: int = 2005, end_year: int = 2024):
-        """Extract all F1 data"""
+        """Run the full extraction pipeline."""
         print("=" * 60)
-        print("Starting F1 Data Extraction from Ergast API")
+        print("Starting F1 data extraction from the Ergast API")
         print("=" * 60)
         
         try:
@@ -513,16 +494,16 @@ class F1DataExtractor:
             self.extract_races(start_year, end_year)
             self.extract_results(start_year, end_year)
             self.extract_qualifying(start_year, end_year)
-            self.extract_pit_stops(max(2012, start_year), end_year)  # Pit stops from 2012
+            self.extract_pit_stops(max(2012, start_year), end_year)
             self.extract_standings(start_year, end_year)
             
             print("=" * 60)
-            print("✓ All data extraction completed successfully!")
+            print("All data extraction steps completed successfully.")
             print(f"Raw data saved to: {self.output_path}")
             print("=" * 60)
             
         except Exception as e:
-            print(f"❌ Error during extraction: {e}")
+            print(f"Error during extraction: {e}")
             import traceback
             traceback.print_exc()
             raise

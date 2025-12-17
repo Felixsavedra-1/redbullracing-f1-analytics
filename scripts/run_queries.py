@@ -1,18 +1,12 @@
-"""
-scripts/run_queries.py
-Execute SQL queries and export results
-"""
-
 import pandas as pd
 from sqlalchemy import create_engine, text
 import argparse
 import os
 
-# Try to import config
 try:
     from config import DB_CONFIG, DATA_PATHS
 except ImportError:
-    print("⚠ Warning: config.py not found. Using default settings.")
+    print("config.py not found; using default database settings.")
     DB_CONFIG = {
         'host': 'localhost',
         'port': 3306,
@@ -25,15 +19,13 @@ except ImportError:
     }
 
 def create_db_connection(config=None):
-    """Create database connection"""
+    """Create a SQLAlchemy engine for the configured database."""
     config = config or DB_CONFIG
     
     if config.get('type') == 'sqlite':
-        # SQLite Connection
         db_file = config.get('filename', 'f1_analytics.db')
         connection_string = f"sqlite:///{db_file}"
     else:
-        # MySQL Connection
         connection_string = (
             f"mysql+pymysql://{config['user']}:{config['password']}"
             f"@{config['host']}:{config['port']}/{config['database']}"
@@ -42,31 +34,31 @@ def create_db_connection(config=None):
     return create_engine(connection_string)
 
 def execute_query(engine, query_name, query_text):
-    """Execute a query and return results as DataFrame"""
+    """Execute a SQL query and return the result as a DataFrame."""
     try:
         with engine.connect() as conn:
             df = pd.read_sql(text(query_text), conn)
         return df
     except Exception as e:
-        print(f"❌ Error executing {query_name}: {e}")
+        print(f"Error executing {query_name}: {e}")
         import traceback
         traceback.print_exc()
         return None
 
 def export_results(df, filename, output_path=None):
-    """Export query results to CSV"""
+    """Export query results to a CSV file."""
     output_path = output_path or DATA_PATHS.get('processed_data', 'data/processed/')
     os.makedirs(output_path, exist_ok=True)
     filepath = os.path.join(output_path, filename)
     df.to_csv(filepath, index=False)
-    print(f"✓ Exported to {filepath}")
+    print(f"Exported results to {filepath}.")
 
 def load_queries_from_file(query_file='database/queries/analytical_queries.sql'):
-    """Load queries from SQL file"""
+    """Load named SELECT queries from a SQL file."""
     queries = {}
     
     if not os.path.exists(query_file):
-        print(f"⚠ Warning: Query file {query_file} not found")
+        print(f"Query file {query_file} not found.")
         return queries
     
     with open(query_file, 'r') as f:
@@ -86,19 +78,16 @@ def load_queries_from_file(query_file='database/queries/analytical_queries.sql')
             for line in lines:
                 line = line.strip()
                 if line.startswith('--') and len(line) > 5:
-                    # Try to extract query name from comments
                     if 'QUERY' in line.upper() or 'ANALYSIS' in line.upper():
                         continue
-                    # Use comment as potential name
                     query_name = line.replace('--', '').strip().lower().replace(' ', '_')
                 elif line and not line.startswith('--'):
                     query_lines.append(line)
             
-            if query_lines and query_name:
-                query_text = '\n'.join(query_lines)
-                # Only add if it looks like a SELECT query
-                if query_text.strip().upper().startswith('SELECT'):
-                    queries[query_name] = query_text
+                if query_lines and query_name:
+                    query_text = '\n'.join(query_lines)
+                    if query_text.strip().upper().startswith('SELECT'):
+                        queries[query_name] = query_text
     
     return queries
 
@@ -157,7 +146,6 @@ def main():
     
     if args.query:
         if args.query == 'all':
-            # Execute all queries
             for query_name, query_text in queries.items():
                 print(f"\n{'='*60}")
                 print(f"Executing {query_name}...")
@@ -181,7 +169,7 @@ def main():
             else:
                 print("No results returned or query failed")
         else:
-            print(f"❌ Query '{args.query}' not found")
+            print(f"Query '{args.query}' not found.")
             print("\nAvailable queries:")
             for query_name in sorted(queries.keys()):
                 print(f"  - {query_name}")
