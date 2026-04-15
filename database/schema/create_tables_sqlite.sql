@@ -53,7 +53,6 @@ CREATE TABLE IF NOT EXISTS races (
 );
 
 CREATE TABLE IF NOT EXISTS qualifying (
-    qualify_id INTEGER PRIMARY KEY AUTOINCREMENT,
     race_id INTEGER,
     driver_id INTEGER,
     constructor_id INTEGER,
@@ -62,14 +61,13 @@ CREATE TABLE IF NOT EXISTS qualifying (
     q1 TEXT,
     q2 TEXT,
     q3 TEXT,
-    UNIQUE (race_id, driver_id),
+    PRIMARY KEY (race_id, driver_id),
     FOREIGN KEY (race_id) REFERENCES races(race_id),
     FOREIGN KEY (driver_id) REFERENCES drivers(driver_id),
     FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id)
 );
 
 CREATE TABLE IF NOT EXISTS results (
-    result_id INTEGER PRIMARY KEY AUTOINCREMENT,
     race_id INTEGER,
     driver_id INTEGER,
     constructor_id INTEGER,
@@ -86,16 +84,14 @@ CREATE TABLE IF NOT EXISTS results (
     fastest_lap_rank INTEGER,
     fastest_lap_time TEXT,
     fastest_lap_speed TEXT,
-    status_id INTEGER,
     status TEXT,
-    UNIQUE (race_id, driver_id, constructor_id),
+    PRIMARY KEY (race_id, driver_id, constructor_id),
     FOREIGN KEY (race_id) REFERENCES races(race_id),
     FOREIGN KEY (driver_id) REFERENCES drivers(driver_id),
     FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id)
 );
 
 CREATE TABLE IF NOT EXISTS pit_stops (
-    pit_stop_id INTEGER PRIMARY KEY AUTOINCREMENT,
     race_id INTEGER,
     driver_id INTEGER,
     stop INTEGER,
@@ -103,33 +99,31 @@ CREATE TABLE IF NOT EXISTS pit_stops (
     time_of_day TEXT,
     duration TEXT,
     milliseconds INTEGER,
-    UNIQUE (race_id, driver_id, stop),
+    PRIMARY KEY (race_id, driver_id, stop),
     FOREIGN KEY (race_id) REFERENCES races(race_id),
     FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
 );
 
 CREATE TABLE IF NOT EXISTS constructor_standings (
-    standing_id INTEGER PRIMARY KEY AUTOINCREMENT,
     race_id INTEGER,
     constructor_id INTEGER,
     points REAL,
     position INTEGER,
     position_text TEXT,
     wins INTEGER,
-    UNIQUE (race_id, constructor_id),
+    PRIMARY KEY (race_id, constructor_id),
     FOREIGN KEY (race_id) REFERENCES races(race_id),
     FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id)
 );
 
 CREATE TABLE IF NOT EXISTS driver_standings (
-    standing_id INTEGER PRIMARY KEY AUTOINCREMENT,
     race_id INTEGER,
     driver_id INTEGER,
     points REAL,
     position INTEGER,
     position_text TEXT,
     wins INTEGER,
-    UNIQUE (race_id, driver_id),
+    PRIMARY KEY (race_id, driver_id),
     FOREIGN KEY (race_id) REFERENCES races(race_id),
     FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
 );
@@ -145,7 +139,8 @@ CREATE INDEX IF NOT EXISTS idx_results_race ON results(race_id);
 CREATE INDEX IF NOT EXISTS idx_results_driver ON results(driver_id);
 CREATE INDEX IF NOT EXISTS idx_results_constructor ON results(constructor_id);
 CREATE INDEX IF NOT EXISTS idx_qualifying_race ON qualifying(race_id);
-CREATE INDEX IF NOT EXISTS idx_pit_stops_race ON pit_stops(race_id);
+CREATE INDEX IF NOT EXISTS idx_pit_stops_race   ON pit_stops(race_id);
+CREATE INDEX IF NOT EXISTS idx_pit_stops_driver ON pit_stops(driver_id);
 CREATE INDEX IF NOT EXISTS idx_constructor_standings_race ON constructor_standings(race_id);
 CREATE INDEX IF NOT EXISTS idx_driver_standings_race ON driver_standings(race_id);
 

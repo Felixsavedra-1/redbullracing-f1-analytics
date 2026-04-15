@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import uuid
@@ -13,11 +14,12 @@ if SCRIPT_DIR not in sys.path:
 from logging_utils import setup_logging
 from schema_contracts import validate_dataframe, SCHEMA_CONTRACTS
 
+_log = logging.getLogger("f1_analytics")
+
 try:
     from config import DB_CONFIG, DATA_PATHS
 except ImportError:
-    print("config.py not found; using default database settings.")
-    print("Copy scripts/config.example.py to scripts/config.py and configure your database.")
+    _log.warning("config.py not found; using SQLite defaults. Copy scripts/config.example.py to scripts/config.py.")
     DB_CONFIG = {
         "type": "sqlite",
         "filename": "f1_analytics.db",
@@ -25,6 +27,16 @@ except ImportError:
     DATA_PATHS = {
         "processed_data": "data/processed/",
     }
+
+
+def _build_connection_string(config: dict) -> str:
+    """Return a SQLAlchemy connection string from a DB_CONFIG dict."""
+    if config.get("type") == "sqlite":
+        return f"sqlite:///{config.get('filename', 'f1_analytics.db')}"
+    return (
+        f"mysql+pymysql://{config['user']}:{config['password']}"
+        f"@{config['host']}:{config['port']}/{config['database']}"
+    )
 
 
 class F1DataLoader:
@@ -41,6 +53,7 @@ class F1DataLoader:
     ):
         self.config = config or DB_CONFIG
         self.processed_path = processed_data_path or DATA_PATHS.get("processed_data", "data/processed/")
+        self.raw_path = os.path.normpath(os.path.join(self.processed_path, "..", "raw"))
         self.engine = None
         self.mode = mode
         self.strict_schema = strict_schema
@@ -60,17 +73,11 @@ class F1DataLoader:
                     os.remove(db_file)
                 if not os.path.isabs(db_file) and "/" in db_file:
                     os.makedirs(os.path.dirname(db_file), exist_ok=True)
-
-                connection_string = f"sqlite:///{db_file}"
                 self.logger.info("Connecting to SQLite database at %s.", db_file)
             else:
-                connection_string = (
-                    f"mysql+pymysql://{self.config['user']}:{self.config['password']}"
-                    f"@{self.config['host']}:{self.config['port']}/{self.config['database']}"
-                )
                 self.logger.info("Connecting to MySQL at %s.", self.config.get("host"))
 
-            self.engine = create_engine(connection_string)
+            self.engine = create_engine(_build_connection_string(self.config))
 
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
@@ -136,6 +143,9 @@ class F1DataLoader:
             conn.commit()
 
     def _record_run_start(self) -> None:
+        # Pipeline audit tables are only created for MySQL deployments.
+        if self.config.get("type") == "sqlite":
+            return
         started_at = datetime.now(timezone.utc).isoformat()
         with self.engine.connect() as conn:
             conn.execute(
@@ -156,6 +166,8 @@ class F1DataLoader:
             conn.commit()
 
     def _record_run_end(self, status: str) -> None:
+        if self.config.get("type") == "sqlite":
+            return
         ended_at = datetime.now(timezone.utc).isoformat()
         with self.engine.connect() as conn:
             conn.execute(
@@ -230,7 +242,7 @@ class F1DataLoader:
 
     def _load_table_full_refresh(self, df: pd.DataFrame, table_name: str) -> None:
         with self.engine.connect() as conn:
-            conn.execute(text(f"DELETE FROM {table_name}"))
+            conn.execute(text(f"DELETE FROM {self._quote(table_name)}"))
             conn.commit()
         df.to_sql(table_name, self.engine, if_exists="append", index=False)
 
@@ -248,8 +260,7 @@ class F1DataLoader:
                 f"SELECT {select_list} FROM {staging_table}"
             )
         else:
-            update_cols = [col for col in df.columns]
-            update_clause = ", ".join([f"{self._quote(col)}=VALUES({self._quote(col)})" for col in update_cols])
+            update_clause = ", ".join([f"{self._quote(col)}=VALUES({self._quote(col)})" for col in df.columns])
             upsert_sql = (
                 f"INSERT INTO {table_name} ({column_list}) "
                 f"SELECT {select_list} FROM {staging_table} "
@@ -280,134 +291,63 @@ class F1DataLoader:
             self.logger.error("Error loading %s: %s", table_name, exc)
             raise
 
-    def load_circuits(self) -> None:
-        self.logger.info("Loading circuits...")
-        df = pd.read_csv(f"{self.processed_path}circuits_clean.csv")
-        self._load_table(df, "circuits")
+    # Each spec: (table_name, csv_path, columns_to_keep, datetime_cols, fillna_defaults)
+    # csv_path is relative to processed_path unless prefixed with "raw:"
+    _TABLE_SPECS = [
+        ("seasons",               "raw:seasons.csv",                 None,  [], {}),
+        ("circuits",              "circuits_clean.csv",              None,  [], {}),
+        ("constructors",          "raw:constructors.csv",            None,  [], {}),
+        ("drivers",               "drivers_clean.csv",               None,  ["dob"], {}),
+        ("races",                 "races_clean.csv",
+            ["race_id", "year", "round", "circuit_id", "race_name", "race_date", "race_time", "url"],
+            ["race_date"], {"race_time": "00:00:00"}),
+        ("results",               "results_clean.csv",
+            ["race_id", "driver_id", "constructor_id", "number", "grid", "position",
+             "position_text", "position_order", "points", "laps", "time_result",
+             "milliseconds", "fastest_lap", "fastest_lap_rank", "fastest_lap_time",
+             "fastest_lap_speed", "status"],
+            [], {}),
+        ("qualifying",            "qualifying_clean.csv",
+            ["race_id", "driver_id", "constructor_id", "number", "position", "q1", "q2", "q3"],
+            [], {}),
+        ("pit_stops",             "pit_stops_clean.csv",
+            ["race_id", "driver_id", "stop", "lap", "time_of_day", "duration", "milliseconds"],
+            [], {"time_of_day": "00:00:00"}),
+        ("constructor_standings", "constructor_standings_clean.csv",
+            ["race_id", "constructor_id", "points", "position", "position_text", "wins"],
+            [], {}),
+        ("driver_standings",      "driver_standings_clean.csv",
+            ["race_id", "driver_id", "points", "position", "position_text", "wins"],
+            [], {}),
+    ]
 
-    def load_seasons(self) -> None:
-        self.logger.info("Loading seasons...")
-        df = pd.read_csv(f"{self.processed_path}../raw/seasons.csv")
-        self._load_table(df, "seasons")
+    def _load_from_spec(self, table: str, csv_name: str, cols, datetime_cols, fillna_defaults) -> None:
+        """Read a CSV and load it into `table`, applying column filtering and coercions."""
+        if csv_name.startswith("raw:"):
+            path = os.path.join(self.raw_path, csv_name[4:])
+        else:
+            path = os.path.join(self.processed_path, csv_name)
 
-    def load_constructors(self) -> None:
-        self.logger.info("Loading constructors...")
-        df = pd.read_csv(f"{self.processed_path}../raw/constructors.csv")
-        self._load_table(df, "constructors")
-
-    def load_drivers(self) -> None:
-        self.logger.info("Loading drivers...")
-        df = pd.read_csv(f"{self.processed_path}drivers_clean.csv")
-
-        if "dob" in df.columns:
-            df["dob"] = pd.to_datetime(df["dob"], errors="coerce")
-
-        self._load_table(df, "drivers")
-
-    def load_races(self) -> None:
-        self.logger.info("Loading races...")
-        df = pd.read_csv(f"{self.processed_path}races_clean.csv")
-
-        if "race_date" in df.columns:
-            df["race_date"] = pd.to_datetime(df["race_date"], errors="coerce")
-        if "race_time" in df.columns:
-            df["race_time"] = df["race_time"].fillna("00:00:00")
-
-        required_cols = [
-            "race_id",
-            "year",
-            "round",
-            "circuit_id",
-            "race_name",
-            "race_date",
-            "race_time",
-            "url",
-        ]
-        df = df[[col for col in required_cols if col in df.columns]]
-
-        self._load_table(df, "races")
-
-    def load_results(self) -> None:
-        self.logger.info("Loading results...")
-        try:
-            df = pd.read_csv(f"{self.processed_path}results_clean.csv")
-        except pd.errors.EmptyDataError:
-            self.logger.warning("results_clean.csv has no columns; skipping load.")
+        if not os.path.exists(path) or os.path.getsize(path) < 10:
+            self.logger.info("Skipping %s: file missing or empty.", table)
             return
 
-        required_cols = [
-            "race_id",
-            "driver_id",
-            "constructor_id",
-            "number",
-            "grid",
-            "position",
-            "position_text",
-            "position_order",
-            "points",
-            "laps",
-            "time_result",
-            "milliseconds",
-            "fastest_lap",
-            "fastest_lap_rank",
-            "fastest_lap_time",
-            "fastest_lap_speed",
-            "status_id",
-            "status",
-        ]
-
-        df = df[[col for col in required_cols if col in df.columns]]
-
-        self._load_table(df, "results")
-
-    def load_qualifying(self) -> None:
-        self.logger.info("Loading qualifying...")
         try:
-            df = pd.read_csv(f"{self.processed_path}qualifying_clean.csv")
+            df = pd.read_csv(path)
         except pd.errors.EmptyDataError:
-            self.logger.warning("qualifying_clean.csv has no columns; skipping load.")
+            self.logger.warning("%s has no columns; skipping load.", csv_name)
             return
 
-        required_cols = ["race_id", "driver_id", "constructor_id", "number", "position", "q1", "q2", "q3"]
-        df = df[[col for col in required_cols if col in df.columns]]
+        for col in datetime_cols:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+        for col, default in fillna_defaults.items():
+            if col in df.columns:
+                df[col] = df[col].fillna(default)
+        if cols:
+            df = df[[c for c in cols if c in df.columns]]
 
-        self._load_table(df, "qualifying")
-
-    def load_pit_stops(self) -> None:
-        self.logger.info("Loading pit stops...")
-        df = pd.read_csv(f"{self.processed_path}pit_stops_clean.csv")
-
-        if "time_of_day" in df.columns:
-            df["time_of_day"] = df["time_of_day"].fillna("00:00:00")
-        required_cols = ["race_id", "driver_id", "stop", "lap", "time_of_day", "duration", "milliseconds"]
-        df = df[[col for col in required_cols if col in df.columns]]
-
-        self._load_table(df, "pit_stops")
-
-    def load_standings(self) -> None:
-        self.logger.info("Loading standings...")
-
-        const_path = f"{self.processed_path}constructor_standings_clean.csv"
-        if not os.path.exists(const_path) or os.path.getsize(const_path) < 10:
-            self.logger.info("Skipping constructor standings: no rows to load.")
-            df_const = pd.DataFrame()
-        else:
-            df_const = pd.read_csv(const_path)
-        required_cols = ["race_id", "constructor_id", "points", "position", "position_text", "wins"]
-        if not df_const.empty:
-            df_const = df_const[[col for col in required_cols if col in df_const.columns]]
-            self._load_table(df_const, "constructor_standings")
-
-        driver_path = f"{self.processed_path}driver_standings_clean.csv"
-        if not os.path.exists(driver_path) or os.path.getsize(driver_path) < 10:
-            self.logger.info("Skipping driver standings: no rows to load.")
-            df_driver = pd.DataFrame()
-        else:
-            df_driver = pd.read_csv(driver_path)
-        required_cols = ["race_id", "driver_id", "points", "position", "position_text", "wins"]
-        if not df_driver.empty:
-            df_driver = df_driver[[col for col in required_cols if col in df_driver.columns]]
-            self._load_table(df_driver, "driver_standings")
+        self._load_table(df, table)
 
     def load_all(self) -> None:
         """Load all transformed data into the configured database."""
@@ -415,15 +355,9 @@ class F1DataLoader:
         self._record_run_start()
 
         try:
-            self.load_seasons()
-            self.load_circuits()
-            self.load_constructors()
-            self.load_drivers()
-            self.load_races()
-            self.load_results()
-            self.load_qualifying()
-            self.load_pit_stops()
-            self.load_standings()
+            for spec in self._TABLE_SPECS:
+                self.logger.info("Loading %s...", spec[0])
+                self._load_from_spec(*spec)
 
             self._record_run_end("success")
             self.logger.info("All data loaded successfully into database.")

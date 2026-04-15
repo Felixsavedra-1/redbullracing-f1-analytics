@@ -67,8 +67,8 @@ class TestQualityChecks(unittest.TestCase):
                 conn.execute(
                     text(
                         "INSERT INTO results (race_id, driver_id, constructor_id, number, grid, position, position_text, position_order, points, laps, "
-                        "time_result, milliseconds, fastest_lap, fastest_lap_rank, fastest_lap_time, fastest_lap_speed, status_id, status) "
-                        "VALUES (202401, 1, 1, 33, 1, 1, '1', 1, 25, 52, '1:30:00', 5400000, 12, 1, '1:20.000', '220.5', 1, 'Finished')"
+                        "time_result, milliseconds, fastest_lap, fastest_lap_rank, fastest_lap_time, fastest_lap_speed, status) "
+                        "VALUES (202401, 1, 1, 33, 1, 1, '1', 1, 25, 52, '1:30:00', 5400000, 12, 1, '1:20.000', '220.5', 'Finished')"
                     )
                 )
                 conn.execute(

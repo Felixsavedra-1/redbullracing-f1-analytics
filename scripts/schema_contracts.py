@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Callable, Dict, List
 import pandas as pd
 from pandas.api.types import (
     is_datetime64_any_dtype,
@@ -9,6 +9,14 @@ from pandas.api.types import (
     is_numeric_dtype,
     is_object_dtype,
 )
+
+_TYPE_CHECK: Dict[str, Callable] = {
+    "numeric":  is_numeric_dtype,
+    "integer":  is_integer_dtype,
+    "float":    is_float_dtype,
+    "string":   is_object_dtype,
+    "datetime": is_datetime64_any_dtype,
+}
 
 SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
     "circuits": {
@@ -75,39 +83,15 @@ SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
     },
     "results": {
         "required": [
-            "race_id",
-            "driver_id",
-            "constructor_id",
-            "number",
-            "grid",
-            "position",
-            "position_text",
-            "position_order",
-            "points",
-            "laps",
-            "time_result",
-            "milliseconds",
-            "fastest_lap",
-            "fastest_lap_rank",
-            "fastest_lap_time",
-            "fastest_lap_speed",
-            "status_id",
-            "status",
+            "race_id", "driver_id", "constructor_id", "number", "grid",
+            "position", "position_text", "position_order", "points", "laps",
+            "time_result", "milliseconds", "fastest_lap", "fastest_lap_rank",
+            "fastest_lap_time", "fastest_lap_speed", "status",
         ],
         "numeric": [
-            "race_id",
-            "driver_id",
-            "constructor_id",
-            "number",
-            "grid",
-            "position",
-            "position_order",
-            "points",
-            "laps",
-            "milliseconds",
-            "fastest_lap",
-            "fastest_lap_rank",
-            "status_id",
+            "race_id", "driver_id", "constructor_id", "number", "grid",
+            "position", "position_order", "points", "laps",
+            "milliseconds", "fastest_lap", "fastest_lap_rank",
         ],
         "string": ["position_text", "time_result", "fastest_lap_time", "fastest_lap_speed", "status"],
     },
@@ -166,27 +150,14 @@ SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
 
 
 def _check_types(df: pd.DataFrame, columns: List[str], type_name: str) -> List[str]:
-    issues = []
-    for col in columns:
-        if col not in df.columns:
-            continue
-        series = df[col]
-        if type_name == "numeric":
-            if not is_numeric_dtype(series):
-                issues.append(f"{col} is not numeric")
-        elif type_name == "integer":
-            if not is_integer_dtype(series):
-                issues.append(f"{col} is not integer")
-        elif type_name == "float":
-            if not is_float_dtype(series):
-                issues.append(f"{col} is not float")
-        elif type_name == "string":
-            if not is_object_dtype(series):
-                issues.append(f"{col} is not string-like")
-        elif type_name == "datetime":
-            if not is_datetime64_any_dtype(series):
-                issues.append(f"{col} is not datetime-like")
-    return issues
+    checker = _TYPE_CHECK.get(type_name)
+    if not checker:
+        raise ValueError(f"Unknown type_name: {type_name}")
+    return [
+        f"{col} is not {type_name}"
+        for col in columns
+        if col in df.columns and not checker(df[col])
+    ]
 
 
 def validate_dataframe(table_name: str, df: pd.DataFrame) -> List[str]:

@@ -1,18 +1,104 @@
 import argparse
-import sys
+import json
 import os
+import sys
+
+import pandas as pd
+from sqlalchemy import text
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-from logging_utils import setup_logging
+from logging_utils import setup_logging, format_table
 from constants import DEFAULT_START_YEAR, DEFAULT_END_YEAR
-import json
 from extract_data import F1DataExtractor
 from transform_data import F1DataTransformer
 from load_data import F1DataLoader
 from data_quality import run_quality_checks
+
+
+def _load_skipped(name: str) -> dict:
+    """Load the skipped-rounds dict from a progress JSON file."""
+    for path in (os.path.join("data", "cache", name), os.path.join("data", "raw", name)):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path) as handle:
+                data = json.load(handle)
+            return data.get("skipped", {}) if isinstance(data, dict) else {}
+        except (OSError, json.JSONDecodeError, ValueError):
+            return {}
+    return {}
+
+
+_DRIVER_SUMMARY_SQL = """
+SELECT
+    d.forename || ' ' || d.surname AS driver,
+    GROUP_CONCAT(DISTINCT con.constructor_name) AS team,
+    COUNT(*) AS races,
+    SUM(res.points) AS points,
+    COUNT(CASE WHEN res.position = 1  THEN 1 END) AS wins,
+    COUNT(CASE WHEN res.position <= 3 THEN 1 END) AS podiums,
+    ROUND(AVG(CASE WHEN res.position_order < 999 THEN res.position_order END), 1) AS avg_finish,
+    COUNT(CASE WHEN res.position_order = 999 THEN 1 END) AS dnfs,
+    MIN(r.year) AS from_yr,
+    MAX(r.year) AS to_yr
+FROM results res
+JOIN races        r   ON res.race_id        = r.race_id
+JOIN drivers      d   ON res.driver_id      = d.driver_id
+JOIN constructors con ON res.constructor_id = con.constructor_id
+WHERE con.constructor_ref IN ('red_bull', 'alphatauri', 'rb')
+GROUP BY d.driver_id, d.forename, d.surname
+ORDER BY points DESC
+"""
+
+_TEAM_SHORT = {
+    "Oracle Red Bull Racing":              "Red Bull",
+    "Red Bull Racing":                     "Red Bull",
+    "Scuderia AlphaTauri":                 "AlphaTauri",
+    "Visa Cash App RB Formula One Team":   "RB",
+    "RB Formula One Team":                 "RB",
+}
+
+
+def _shorten_teams(raw: str) -> str:
+    parts = [_TEAM_SHORT.get(t.strip(), t.strip()) for t in raw.split(",")]
+    seen, unique = set(), []
+    for p in parts:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return " · ".join(unique)
+
+
+def _print_driver_summary(engine) -> None:
+    try:
+        with engine.connect() as conn:
+            df = pd.read_sql(text(_DRIVER_SUMMARY_SQL), conn)
+        if df.empty:
+            return
+
+        df["team"]   = df["team"].apply(_shorten_teams)
+        df["period"] = df.apply(
+            lambda r: f"{int(r.from_yr)}–{str(int(r.to_yr))[2:]}", axis=1
+        )
+        df["points"] = df["points"].astype(int)
+        df = df[["driver", "team", "period", "races", "points",
+                 "wins", "podiums", "avg_finish", "dnfs"]]
+
+        headers = ["Driver", "Team", "Period", "Races", "Pts", "Wins", "Pods", "Avg", "DNFs"]
+        rows = df.values.tolist()
+        right_cols = {3, 4, 5, 6, 7, 8}
+
+        rule = "─" * 70
+        print(f"\n{rule}")
+        print(f"  Red Bull Drivers  2020–2025")
+        print(rule)
+        print(format_table(headers, rows, right_cols))
+        print(f"{rule}\n")
+    except Exception:
+        pass  # summary is informational; never block the pipeline
 
 
 def _normalize_year_range(start_year: int, end_year: int) -> tuple[int, int, bool]:
@@ -93,24 +179,12 @@ def run_full_pipeline(
         )
         loader.load_all()
 
-        if not skip_quality:
-            def load_skipped(name: str) -> dict:
-                cache_path = os.path.join("data", "cache", name)
-                legacy_path = os.path.join("data", "raw", name)
-                for path in (cache_path, legacy_path):
-                    if not os.path.exists(path):
-                        continue
-                    try:
-                        with open(path, "r") as handle:
-                            data = json.load(handle)
-                        return data.get("skipped", {}) if isinstance(data, dict) else {}
-                    except Exception:
-                        return {}
-                return {}
+        _print_driver_summary(loader.engine)
 
+        if not skip_quality:
             skipped_rounds = {
-                "results": load_skipped("results_progress.json"),
-                "qualifying": load_skipped("qualifying_progress.json"),
+                "results": _load_skipped("results_progress.json"),
+                "qualifying": _load_skipped("qualifying_progress.json"),
             }
 
             failures = run_quality_checks(
@@ -218,13 +292,11 @@ Examples:
             max_base_delay=args.max_base_delay,
         )
     except KeyboardInterrupt:
-        print("\n\nPipeline interrupted by user.")
+        print("\nPipeline interrupted by user.")
         sys.exit(1)
     except Exception as exc:
-        print(f"\n\nPipeline failed: {exc}")
-        import traceback
-
-        traceback.print_exc()
+        logger = setup_logging()
+        logger.exception("Pipeline failed: %s", exc)
         sys.exit(1)
 
 
