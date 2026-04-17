@@ -30,7 +30,6 @@ except ImportError:
 
 
 def _build_connection_string(config: dict) -> str:
-    """Return a SQLAlchemy connection string from a DB_CONFIG dict."""
     if config.get("type") == "sqlite":
         return f"sqlite:///{config.get('filename', 'f1_analytics.db')}"
     return (
@@ -40,8 +39,6 @@ def _build_connection_string(config: dict) -> str:
 
 
 class F1DataLoader:
-    """Load transformed F1 data into a relational database."""
-
     def __init__(
         self,
         config=None,
@@ -64,13 +61,13 @@ class F1DataLoader:
         self._ensure_metadata_tables()
 
     def _connect(self) -> None:
-        """Create a database engine and validate the connection."""
         try:
             if self.config.get("type") == "sqlite":
                 db_file = self.config.get("filename", "f1_analytics.db")
                 if self.mode == "full_refresh" and os.path.exists(db_file):
-                    self.logger.warning("Full refresh: removing existing SQLite database %s.", db_file)
-                    os.remove(db_file)
+                    bak_file = db_file + ".bak"
+                    os.replace(db_file, bak_file)
+                    self.logger.warning("Full refresh: renamed %s → %s.", db_file, bak_file)
                 if not os.path.isabs(db_file) and "/" in db_file:
                     os.makedirs(os.path.dirname(db_file), exist_ok=True)
                 self.logger.info("Connecting to SQLite database at %s.", db_file)
@@ -236,7 +233,11 @@ class F1DataLoader:
 
         for col in contract.get("datetime", []):
             if col in df.columns:
+                before = int(df[col].notna().sum())
                 df[col] = pd.to_datetime(df[col], errors="coerce")
+                lost = before - int(df[col].notna().sum())
+                if lost:
+                    self.logger.warning("Coerced %s invalid values to NaT in %s.%s.", lost, table_name, col)
 
         return df
 
@@ -267,10 +268,14 @@ class F1DataLoader:
                 f"ON DUPLICATE KEY UPDATE {update_clause}"
             )
 
-        with self.engine.connect() as conn:
-            conn.execute(text(upsert_sql))
-            conn.execute(text(f"DROP TABLE IF EXISTS {staging_table}"))
-            conn.commit()
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(text(upsert_sql))
+                conn.commit()
+        finally:
+            with self.engine.connect() as conn:
+                conn.execute(text(f"DROP TABLE IF EXISTS {staging_table}"))
+                conn.commit()
 
     def _load_table(self, df: pd.DataFrame, table_name: str) -> None:
         if df.empty:
@@ -322,7 +327,6 @@ class F1DataLoader:
     ]
 
     def _load_from_spec(self, table: str, csv_name: str, cols, datetime_cols, fillna_defaults) -> None:
-        """Read a CSV and load it into `table`, applying column filtering and coercions."""
         if csv_name.startswith("raw:"):
             path = os.path.join(self.raw_path, csv_name[4:])
         else:
@@ -350,7 +354,6 @@ class F1DataLoader:
         self._load_table(df, table)
 
     def load_all(self) -> None:
-        """Load all transformed data into the configured database."""
         self.logger.info("Starting data loading into database.")
         self._record_run_start()
 

@@ -11,7 +11,7 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from logging_utils import setup_logging, format_table
-from constants import RED_BULL_CONSTRUCTOR_ID
+from constants import CONSTRUCTOR_ID, TEAM_REFS
 from load_data import _build_connection_string
 
 try:
@@ -22,14 +22,16 @@ except ImportError:
 
 logger = setup_logging()
 
+_DEFAULT_QUERIES_FILE = os.path.normpath(
+    os.path.join(SCRIPT_DIR, "..", "database", "queries", "analytical_queries.yaml")
+)
+
 
 def create_db_connection(config=None):
-    """Create a SQLAlchemy engine for the configured database."""
     return create_engine(_build_connection_string(config or DB_CONFIG))
 
 
 def execute_query(engine, query_name, query_text, params=None):
-    """Execute a SQL query and return the result as a DataFrame."""
     try:
         with engine.connect() as conn:
             df = pd.read_sql(text(query_text), conn, params=params)
@@ -40,7 +42,6 @@ def execute_query(engine, query_name, query_text, params=None):
 
 
 def export_results(df, filename, output_path=None):
-    """Export query results to a CSV file."""
     output_path = output_path or DATA_PATHS.get("processed_data", "data/processed/")
     os.makedirs(output_path, exist_ok=True)
     filepath = os.path.join(output_path, filename)
@@ -49,9 +50,8 @@ def export_results(df, filename, output_path=None):
 
 
 def load_queries_from_yaml(
-    query_file: str = "database/queries/analytical_queries.yaml",
+    query_file: str = _DEFAULT_QUERIES_FILE,
 ) -> dict[str, str]:
-    """Load named SQL queries from a YAML file mapping name -> SQL string."""
     if not os.path.exists(query_file):
         logger.warning("Query file %s not found.", query_file)
         return {}
@@ -67,13 +67,14 @@ def main():
     parser.add_argument(
         "--file",
         type=str,
-        default="database/queries/analytical_queries.yaml",
+        default=_DEFAULT_QUERIES_FILE,
         help="YAML file to load queries from",
     )
 
     args = parser.parse_args()
     engine = create_db_connection()
-    params = {"cid": RED_BULL_CONSTRUCTOR_ID}
+    params = {"cid": CONSTRUCTOR_ID}
+    team_refs_sql = ", ".join(f"'{r}'" for r in TEAM_REFS)
 
     queries = load_queries_from_yaml(args.file)
 
@@ -92,7 +93,8 @@ def main():
                 continue
 
             logger.info("Executing %s...", query_name)
-            df = execute_query(engine, query_name, query_text, params=params)
+            resolved = query_text.replace("{team_refs}", team_refs_sql)
+            df = execute_query(engine, query_name, resolved, params=params)
 
             if df is not None and not df.empty:
                 headers = list(df.columns)

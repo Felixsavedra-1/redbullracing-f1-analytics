@@ -11,7 +11,7 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from logging_utils import setup_logging, format_table
-from constants import DEFAULT_START_YEAR, DEFAULT_END_YEAR
+from constants import DEFAULT_START_YEAR, DEFAULT_END_YEAR, TEAM_NAME, TEAM_REFS
 from extract_data import F1DataExtractor
 from transform_data import F1DataTransformer
 from load_data import F1DataLoader
@@ -19,7 +19,6 @@ from data_quality import run_quality_checks
 
 
 def _load_skipped(name: str) -> dict:
-    """Load the skipped-rounds dict from a progress JSON file."""
     for path in (os.path.join("data", "cache", name), os.path.join("data", "raw", name)):
         if not os.path.exists(path):
             continue
@@ -48,7 +47,7 @@ FROM results res
 JOIN races        r   ON res.race_id        = r.race_id
 JOIN drivers      d   ON res.driver_id      = d.driver_id
 JOIN constructors con ON res.constructor_id = con.constructor_id
-WHERE con.constructor_ref IN ('red_bull', 'alphatauri', 'rb')
+WHERE con.constructor_ref IN ({team_refs})
 GROUP BY d.driver_id, d.forename, d.surname
 ORDER BY points DESC
 """
@@ -74,8 +73,10 @@ def _shorten_teams(raw: str) -> str:
 
 def _print_driver_summary(engine) -> None:
     try:
+        refs_sql = ", ".join(f"'{r}'" for r in TEAM_REFS)
+        sql = _DRIVER_SUMMARY_SQL.format(team_refs=refs_sql)
         with engine.connect() as conn:
-            df = pd.read_sql(text(_DRIVER_SUMMARY_SQL), conn)
+            df = pd.read_sql(text(sql), conn)
         if df.empty:
             return
 
@@ -93,7 +94,8 @@ def _print_driver_summary(engine) -> None:
 
         rule = "─" * 70
         print(f"\n{rule}")
-        print(f"  Red Bull Drivers  2020–2025")
+        year_range = f"{df['from_yr'].min():.0f}–{df['to_yr'].max():.0f}" if not df.empty else ""
+        print(f"  {TEAM_NAME} Drivers  {year_range}")
         print(rule)
         print(format_table(headers, rows, right_cols))
         print(f"{rule}\n")

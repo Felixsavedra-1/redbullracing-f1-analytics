@@ -18,8 +18,6 @@ from logging_utils import setup_logging
 from constants import DEFAULT_START_YEAR, DEFAULT_END_YEAR, DNF_POSITION_ORDER
 
 class F1DataExtractor:
-    """Extract F1 data from Ergast-compatible API with rate-limit handling."""
-
     BASE_URL = "https://api.jolpi.ca/ergast/f1"
 
     def __init__(
@@ -30,6 +28,7 @@ class F1DataExtractor:
         max_backoff: float = 20.0,
         max_base_delay: float = 8.0,
         timeout: int = 30,
+        circuit_breaker_limit: Optional[int] = 50,
     ):
         self.output_path = output_path
         base_dir = os.path.dirname(os.path.normpath(output_path)) or "."
@@ -39,9 +38,11 @@ class F1DataExtractor:
         self.max_backoff = max_backoff
         self.max_base_delay = max_base_delay
         self.timeout = timeout
+        self.circuit_breaker_limit = circuit_breaker_limit
         self.session = requests.Session()
         self._last_request_ts = 0.0
         self._consecutive_rate_limits = 0
+        self._total_rate_limits = 0
         self.logger = setup_logging()
         os.makedirs(output_path, exist_ok=True)
         os.makedirs(self.cache_path, exist_ok=True)
@@ -135,7 +136,6 @@ class F1DataExtractor:
             self.logger.warning("%s was written but appears empty.", filename)
 
     def _make_request(self, endpoint: str, limit: int = 1000, offset: int = 0) -> Optional[Dict]:
-        """Issue a single API request with retry/backoff and rate-limit handling."""
         url = f"{self.BASE_URL}/{endpoint}.json?limit={limit}&offset={offset}"
 
         for attempt in range(self.max_retries):
@@ -144,8 +144,17 @@ class F1DataExtractor:
                 response = self.session.get(url, timeout=self.timeout)
                 if response.status_code == 429:
                     retry_after = response.headers.get("Retry-After")
-                    self.logger.info("Rate limited on %s; retrying...", endpoint)
                     self._consecutive_rate_limits += 1
+                    self._total_rate_limits += 1
+                    if self.circuit_breaker_limit and self._total_rate_limits >= self.circuit_breaker_limit:
+                        raise RuntimeError(
+                            f"Circuit breaker: {self._total_rate_limits} rate limit responses received. "
+                            "Increase --base-delay or try again later."
+                        )
+                    self.logger.info(
+                        "Rate limited on %s (total: %s); retrying...",
+                        endpoint, self._total_rate_limits,
+                    )
                     if self._consecutive_rate_limits >= 3:
                         self.base_delay = min(self.base_delay * 1.5, self.max_base_delay)
                     self._backoff(attempt, retry_after)
@@ -164,7 +173,6 @@ class F1DataExtractor:
         return None
     
     def _extract_table(self, json_data: Dict, table_name: str) -> List[Dict]:
-        """Extract the main table payload from an Ergast response."""
         if not json_data or 'MRData' not in json_data:
             return []
         
@@ -190,7 +198,6 @@ class F1DataExtractor:
     def _paginate(
         self, endpoint: str, table_key: str, limit: int = 100
     ) -> Iterator[list]:
-        """Yield each page of records from a paginated Ergast endpoint."""
         offset = 0
         while True:
             data = self._make_request(endpoint, limit=limit, offset=offset)
@@ -205,7 +212,6 @@ class F1DataExtractor:
             offset += limit
 
     def extract_circuits(self) -> pd.DataFrame:
-        """Extract circuits data."""
         self.logger.info("Extracting circuits...")
         all_circuits = []
         for circuits in self._paginate("circuits", "CircuitsTable"):
@@ -227,7 +233,6 @@ class F1DataExtractor:
         return df
     
     def extract_seasons(self) -> pd.DataFrame:
-        """Extract seasons data."""
         self.logger.info("Extracting seasons...")
         all_seasons = []
         for seasons in self._paginate("seasons", "SeasonTable"):
@@ -242,7 +247,6 @@ class F1DataExtractor:
         return df
     
     def extract_constructors(self) -> pd.DataFrame:
-        """Extract constructors data."""
         self.logger.info("Extracting constructors...")
         all_constructors = []
         for constructors in self._paginate("constructors", "ConstructorTable"):
@@ -260,7 +264,6 @@ class F1DataExtractor:
         return df
     
     def extract_drivers(self) -> pd.DataFrame:
-        """Extract drivers data."""
         self.logger.info("Extracting drivers...")
         all_drivers = []
         for drivers in self._paginate("drivers", "DriverTable"):
@@ -285,7 +288,6 @@ class F1DataExtractor:
     def extract_races(
         self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR
     ) -> pd.DataFrame:
-        """Extract race metadata for a range of years."""
         self.logger.info("Extracting races (%s-%s)...", start_year, end_year)
         all_races = []
         for year in range(start_year, end_year + 1):
@@ -315,16 +317,10 @@ class F1DataExtractor:
         endpoint: str,
         progress_file: str,
         output_file: str,
-        parse_race: Callable,
+        parse_race: Callable,  # (race_dict, race_id) -> list[dict]
         label: str,
         min_rows_per_race: int = 0,
     ) -> List[Dict]:
-        """Shared scaffold for per-round extraction with resume state.
-
-        Handles progress loading, staleness detection, skip/done tracking, and
-        progress persistence. The caller supplies only the parsing logic via
-        parse_race(race_dict, race_id) -> list[dict].
-        """
         rows: List[Dict] = []
         progress = self._load_progress(progress_file, start_year, end_year)
         races_count = sum(len(rounds_by_year.get(y) or []) for y in range(start_year, end_year + 1))
@@ -439,7 +435,6 @@ class F1DataExtractor:
         return rows
 
     def extract_results(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR):
-        """Extract race results."""
         self.logger.info("Extracting results (%s-%s)...", start_year, end_year)
         rounds_by_year = self._get_rounds_by_year(start_year, end_year)
         rows = self._extract_per_round(
@@ -457,7 +452,6 @@ class F1DataExtractor:
         return df
 
     def extract_qualifying(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR):
-        """Extract qualifying results."""
         self.logger.info("Extracting qualifying (%s-%s)...", start_year, end_year)
         rounds_by_year = self._get_rounds_by_year(start_year, end_year)
         rows = self._extract_per_round(
@@ -536,7 +530,7 @@ class F1DataExtractor:
         os.replace(tmp_path, path)
 
     def extract_pit_stops(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR):
-        """Extract pit stop data (available from 2012 onward)."""
+        # Pit stop data is only available from 2012 onward in the Ergast API.
         self.logger.info("Extracting pit stops (%s-%s)...", start_year, end_year)
         rounds_by_year = self._get_rounds_by_year(start_year, end_year)
         rows = self._extract_per_round(
@@ -603,7 +597,6 @@ class F1DataExtractor:
     def extract_standings(
         self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Extract constructor and driver standings."""
         self.logger.info("Extracting standings (%s-%s)...", start_year, end_year)
         df_const = pd.DataFrame(self._collect_standings(
             start_year, end_year,
@@ -625,7 +618,6 @@ class F1DataExtractor:
         end_year: int = DEFAULT_END_YEAR,
         skip_pit_stops: bool = False,
     ):
-        """Run the full extraction pipeline."""
         start_year = max(DEFAULT_START_YEAR, start_year)
         end_year = min(DEFAULT_END_YEAR, end_year)
         if start_year > end_year:

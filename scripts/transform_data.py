@@ -17,8 +17,6 @@ from constants import DNF_POSITION_ORDER
 
 
 class F1DataTransformer:
-    """Transform and clean F1 data for database loading."""
-
     def __init__(self, raw_data_path: str = "data/raw/", processed_data_path: str = "data/processed/") -> None:
         self.raw_path = raw_data_path
         self.processed_path = processed_data_path
@@ -40,27 +38,43 @@ class F1DataTransformer:
 
     @functools.lru_cache(maxsize=None)
     def _load_ref_map(self, filename: str, ref_col: str, id_col: str) -> dict:
-        """Load a raw CSV and return a {ref_value: id} mapping (cached per filename+cols)."""
+        # Cached per (filename, ref_col, id_col). One instance per pipeline run — do not
+        # reuse across separate extractions if raw CSVs may have changed between them.
         df = pd.read_csv(os.path.join(self.raw_path, filename))
         if id_col not in df.columns:
             df[id_col] = range(1, len(df) + 1)
         return dict(zip(df[ref_col], df[id_col]))
 
     def _apply_ref_map(self, df: pd.DataFrame, ref_col: str, id_col: str, filename: str) -> pd.DataFrame:
-        """Map ref strings to integer IDs in-place; logs count of unmapped rows."""
+        """Map ref strings to integer IDs; drops rows that cannot be mapped."""
         try:
             ref_map = self._load_ref_map(filename, ref_col, id_col)
-            df[id_col] = df[ref_col].map(ref_map).fillna(0).astype(int)
-            missing = int((df[id_col] == 0).sum())
-            if missing:
-                self.logger.warning("%s unmapped %s values in %s → defaulting to 0.", missing, ref_col, filename)
         except (FileNotFoundError, KeyError):
-            self.logger.warning("Could not load ref map %s; defaulting %s to 0.", filename, id_col)
-            df[id_col] = 0
+            self.logger.warning("Ref map file %s not found; dropping all %s rows.", filename, ref_col)
+            return df.iloc[0:0].copy()
+
+        mapped = df[ref_col].map(ref_map)
+        unmapped_count = int(mapped.isna().sum())
+        if unmapped_count:
+            self.logger.warning(
+                "Dropping %s rows with unmapped %s values (not in %s).",
+                unmapped_count, ref_col, filename,
+            )
+            df = df[mapped.notna()].copy()
+            mapped = mapped[mapped.notna()]
+
+        df[id_col] = mapped.astype(int)
+        return df
+
+    def _coerce_datetime(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
+        before = int(df[col].notna().sum())
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+        lost = before - int(df[col].notna().sum())
+        if lost:
+            self.logger.warning("Coerced %s invalid values to NaT in column '%s'.", lost, col)
         return df
 
     def transform_circuits(self) -> pd.DataFrame:
-        """Clean and normalize circuits data."""
         df = self._read_csv_safe("circuits.csv")
         if df is None:
             empty = pd.DataFrame()
@@ -85,7 +99,6 @@ class F1DataTransformer:
         return df
 
     def transform_drivers(self) -> pd.DataFrame:
-        """Clean and normalize driver data."""
         df = self._read_csv_safe("drivers.csv")
         if df is None:
             empty = pd.DataFrame()
@@ -96,7 +109,7 @@ class F1DataTransformer:
             df["driver_id"] = range(1, len(df) + 1)
 
         if "dob" in df.columns:
-            df["dob"] = pd.to_datetime(df["dob"], errors="coerce")
+            df = self._coerce_datetime(df, "dob")
 
         if "driver_number" in df.columns:
             df["driver_number"] = df["driver_number"].fillna(0).astype(int)
@@ -124,7 +137,6 @@ class F1DataTransformer:
         return df
 
     def transform_races(self) -> pd.DataFrame:
-        """Clean and normalize race data."""
         df = self._read_csv_safe("races.csv")
         if df is None:
             empty = pd.DataFrame()
@@ -132,7 +144,7 @@ class F1DataTransformer:
             return empty
 
         if "race_date" in df.columns:
-            df["race_date"] = pd.to_datetime(df["race_date"], errors="coerce")
+            df = self._coerce_datetime(df, "race_date")
 
         if "race_time" in df.columns:
             df["race_time"] = df["race_time"].fillna("00:00:00")
@@ -169,7 +181,6 @@ class F1DataTransformer:
         return df
 
     def transform_results(self) -> pd.DataFrame:
-        """Clean and normalize race results."""
         results_columns = [
             "race_id", "driver_ref", "constructor_ref", "number", "grid",
             "position", "position_text", "position_order", "points", "laps",
@@ -221,7 +232,6 @@ class F1DataTransformer:
         return df
 
     def transform_qualifying(self) -> pd.DataFrame:
-        """Clean and normalize qualifying data."""
         qualifying_columns = [
             "race_id", "driver_ref", "constructor_ref", "number", "position", "q1", "q2", "q3",
         ]
@@ -249,7 +259,6 @@ class F1DataTransformer:
         return df
 
     def transform_pit_stops(self) -> pd.DataFrame:
-        """Clean and normalize pit stop data."""
         df = self._read_csv_safe("pit_stops.csv")
         if df is None:
             empty = pd.DataFrame()
@@ -278,7 +287,6 @@ class F1DataTransformer:
     def _transform_standings_df(
         self, filename: str, ref_col: str, id_col: str, ref_filename: str, out_filename: str
     ) -> pd.DataFrame:
-        """Read, ref-map, and write one standings file; returns cleaned DataFrame."""
         df = self._read_csv_safe(filename)
         if df is None or df.empty:
             self.logger.info("No %s to transform.", filename)
@@ -291,7 +299,6 @@ class F1DataTransformer:
         return df
 
     def transform_standings(self) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Clean and normalize constructor and driver standings."""
         df_const = self._transform_standings_df(
             "constructor_standings.csv", "constructor_ref", "constructor_id",
             "constructors.csv", "constructor_standings_clean.csv",
@@ -303,7 +310,6 @@ class F1DataTransformer:
         return df_const, df_driver
 
     def transform_all(self) -> None:
-        """Run all transformations in sequence."""
         self.logger.info("Starting data transformation.")
         try:
             self.transform_circuits()

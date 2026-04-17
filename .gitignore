@@ -9,3 +9,4 @@ data/cache/
 *.db
 .DS_Store
 .vscode/
+CLAUDE.md

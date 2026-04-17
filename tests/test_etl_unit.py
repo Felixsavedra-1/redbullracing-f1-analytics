@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 import pandas as pd
+from sqlalchemy import inspect as sa_inspect
 
 from scripts.transform_data import F1DataTransformer
 from scripts.load_data import F1DataLoader
@@ -62,7 +63,7 @@ class TestTransformMissingFiles(unittest.TestCase):
 
 
 class TestApplyRefMap(unittest.TestCase):
-    def test_unmapped_refs_become_zero(self):
+    def test_unmapped_refs_are_dropped(self):
         with tempfile.TemporaryDirectory() as tmp:
             write_csv(os.path.join(tmp, "constructors.csv"),
                       ["constructor_id", "constructor_ref"],
@@ -70,8 +71,18 @@ class TestApplyRefMap(unittest.TestCase):
             t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
             df = pd.DataFrame({"constructor_ref": ["red_bull", "unknown_team"]})
             result = t._apply_ref_map(df, "constructor_ref", "constructor_id", "constructors.csv")
+            # known ref is mapped correctly
             self.assertEqual(result.loc[result["constructor_ref"] == "red_bull", "constructor_id"].iloc[0], 9)
-            self.assertEqual(result.loc[result["constructor_ref"] == "unknown_team", "constructor_id"].iloc[0], 0)
+            # unknown ref row is dropped entirely — no FK=0 pollution
+            self.assertEqual(len(result[result["constructor_ref"] == "unknown_team"]), 0)
+            self.assertEqual(len(result), 1)
+
+    def test_missing_ref_file_returns_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
+            df = pd.DataFrame({"driver_ref": ["max_verstappen"]})
+            result = t._apply_ref_map(df, "driver_ref", "driver_id", "drivers.csv")
+            self.assertTrue(result.empty)
 
     def test_known_refs_are_mapped(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -170,6 +181,55 @@ class TestNormalizeProgress(unittest.TestCase):
             result = e._normalize_progress(data, 2020, 2020)
             self.assertNotIn("2019", result["years"])
             self.assertNotIn("2021", result["years"])
+
+
+class TestIncrementalStagingCleanup(unittest.TestCase):
+    def test_staging_table_dropped_on_upsert_failure(self):
+        """Staging table must not persist when the upsert fails."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            loader = F1DataLoader(
+                config={"type": "sqlite", "filename": db_path},
+                processed_data_path=tmp + "/",
+                mode="incremental",
+            )
+            df = pd.DataFrame({"col_a": [1, 2]})
+            try:
+                loader._load_table_incremental(df, "nonexistent_table")
+            except Exception:
+                pass
+            inspector = sa_inspect(loader.engine)
+            self.assertNotIn("_stg_nonexistent_table", inspector.get_table_names())
+
+    def test_full_refresh_creates_backup(self):
+        """Full-refresh must rename old DB to .bak rather than deleting it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            # Create a pre-existing database file
+            with open(db_path, "w") as f:
+                f.write("old data")
+            F1DataLoader(
+                config={"type": "sqlite", "filename": db_path},
+                processed_data_path=tmp + "/",
+                mode="full_refresh",
+            )
+            self.assertFalse(os.path.exists(db_path + ".bak") is False,
+                             "backup file should exist after full refresh of an existing DB")
+            self.assertTrue(os.path.exists(db_path + ".bak"))
+
+
+class TestDatetimeCoercionLogging(unittest.TestCase):
+    def test_invalid_dob_logged_not_silently_dropped(self):
+        """Invalid date values should produce NaT with a warning, not silently vanish."""
+        with tempfile.TemporaryDirectory() as tmp:
+            write_csv(os.path.join(tmp, "drivers.csv"),
+                      ["driver_id", "driver_ref", "forename", "surname",
+                       "dob", "nationality", "url", "code"],
+                      [[1, "test_driver", "Test", "Driver", "not-a-date", "British", "", ""]])
+            t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
+            df = t.transform_drivers()
+            self.assertEqual(len(df), 1)
+            self.assertTrue(pd.isna(df["dob"].iloc[0]))
 
 
 if __name__ == "__main__":

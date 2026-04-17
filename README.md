@@ -1,6 +1,6 @@
 # Red Bull F1 Analytics
 
-ETL pipeline and analytical database for Oracle Red Bull Racing performance data, 2020–2025. Extracts from the Ergast API, transforms into a star-schema SQLite database, and exposes nine SQL queries plus a Power BI dashboard.
+ETL pipeline for Formula 1 performance analysis — Red Bull, AlphaTauri, and RB, 2020–2025. Extracts from the Ergast API into a star-schema SQLite database with 14 parameterized analytical queries and a Power BI dashboard.
 
 ---
 
@@ -8,11 +8,11 @@ ETL pipeline and analytical database for Oracle Red Bull Racing performance data
 
 | Layer | Technology |
 |---|---|
-| Extraction | Python `requests`, resumable with rate-limit backoff |
+| Extraction | Python `requests` — resumable, adaptive rate-limit backoff |
 | Transformation | `pandas` — ref-map resolution, schema validation |
 | Storage | SQLite (default) or MySQL |
 | Analysis | SQL queries, Jupyter notebooks, Power BI |
-| API source | [api.jolpi.ca/ergast/f1](https://api.jolpi.ca/ergast/f1) |
+| Source | [api.jolpi.ca/ergast/f1](https://api.jolpi.ca/ergast/f1) |
 
 ---
 
@@ -23,7 +23,7 @@ pip install -r requirements.txt
 python scripts/run_pipeline.py
 ```
 
-The pipeline runs in three stages — extract, transform, load — and prints a driver comparison table on completion:
+Extract → transform → load, then prints a driver summary on completion:
 
 ```
 ──────────────────────────────────────────────────────────────────────
@@ -39,54 +39,66 @@ The pipeline runs in three stages — extract, transform, load — and prints a 
 ──────────────────────────────────────────────────────────────────────
 ```
 
-Covers both Oracle Red Bull Racing and the junior team (AlphaTauri / RB).
-
 ---
 
 ## Pipeline flags
 
 ```bash
-# Skip extraction if raw data is already downloaded
-python scripts/run_pipeline.py --skip-extract
-
-# Skip pit stop extraction (faster, pit stop data is large)
-python scripts/run_pipeline.py --skip-pit-stops
-
-# Custom year range
+python scripts/run_pipeline.py --skip-extract          # skip API extraction
+python scripts/run_pipeline.py --skip-pit-stops        # skip pit stop data (faster)
 python scripts/run_pipeline.py --start-year 2022 --end-year 2024
-
-# Incremental load (upsert instead of full refresh)
-python scripts/run_pipeline.py --incremental
-
-# Adjust API rate limiting
+python scripts/run_pipeline.py --incremental           # upsert instead of full refresh
 python scripts/run_pipeline.py --base-delay 2.0 --max-retries 8
+python scripts/run_pipeline.py --fast                  # demo mode: 2021–2025, reduced retries
 ```
+
+---
+
+## Analysis
+
+Statistical models run after the pipeline completes. Prints summary tables; `--export` saves 300 DPI PNG charts to `data/exports/charts/`.
+
+```bash
+python scripts/run_analysis.py
+python scripts/run_analysis.py --export
+```
+
+| Analysis | Method |
+|---|---|
+| Championship progression | Cumulative points per round, per season |
+| Teammate head-to-head | Mean position delta with 95% t-interval and p-value |
+| Grid → finish regression | OLS with R², slope, and significance test |
+| Pit stop efficiency | Z-score vs season field distribution |
+| DNF rate model | Poisson MLE with exact 95% confidence intervals |
 
 ---
 
 ## Queries
 
-Nine analytical queries are available. Run any of them after the pipeline completes:
+Run after the pipeline completes:
 
 ```bash
 python scripts/run_queries.py --list
 python scripts/run_queries.py --query driver_summary
-python scripts/run_queries.py --query team_performance_overview
-python scripts/run_queries.py --query all
-python scripts/run_queries.py --query driver_performance_comparison --export
+python scripts/run_queries.py --query all --export
 ```
 
 | Query | Description |
 |---|---|
-| `driver_summary` | Career stats per driver across the Red Bull family |
+| `driver_summary` | Career stats across the Red Bull family |
 | `team_performance_overview` | Points, wins, podiums by season |
-| `driver_performance_comparison` | Head-to-head by season |
-| `qualifying_vs_race_performance` | Positions gained from grid to finish |
-| `circuit_performance_analysis` | Best and worst circuits (min 3 appearances) |
+| `driver_performance_comparison` | Head-to-head stats by season |
+| `qualifying_vs_race_performance` | Grid-to-finish position delta |
+| `circuit_performance_analysis` | Best and worst circuits (min 3 starts) |
 | `pit_stop_efficiency` | Avg stop time and std dev by driver/season |
-| `championship_progression` | Points accumulation race by race |
-| `fastest_laps_analysis` | Fastest lap count and percentage by driver |
-| `reliability_analysis` | DNF rate and failure modes by season |
+| `fastest_pit_stops` | Fastest individual stops on record |
+| `championship_progression` | Cumulative points race by race |
+| `driver_championship_battle` | Points gap between teammates by round |
+| `fastest_laps_analysis` | Fastest lap count and share by driver |
+| `reliability_analysis` | DNF rate by driver and season |
+| `failure_modes` | Breakdown of retirement causes |
+| `race_start_analysis` | Positions gained/lost on lap 1 |
+| `key_performance_indicators` | Composite KPI summary per driver |
 
 ---
 
@@ -104,15 +116,10 @@ Schema contracts: `scripts/schema_contracts.py`
 
 ## Configuration
 
-SQLite requires no configuration. For MySQL, copy and edit the config template:
+SQLite requires no configuration. For MySQL:
 
 ```bash
 cp scripts/config.example.py scripts/config.py
-```
-
-Then create the schema and set credentials in `config.py`:
-
-```bash
 mysql -u root -p < database/schema/create_tables_mysql.sql
 ```
 
@@ -122,10 +129,8 @@ mysql -u root -p < database/schema/create_tables_mysql.sql
 
 ```bash
 pip install -r requirements-notebooks.txt
-jupyter notebook
+jupyter notebook  # open notebooks/F1_Analysis.ipynb
 ```
-
-Open `notebooks/F1_Analysis.ipynb`.
 
 ---
 
@@ -137,7 +142,7 @@ python -m unittest discover -s tests
 
 ---
 
-## Project structure
+## Structure
 
 ```
 ├── data/
@@ -164,8 +169,8 @@ python -m unittest discover -s tests
 
 ## Troubleshooting
 
-**API rate limiting** — Increase `--base-delay` (default 1.5s) or reduce the year range. Extraction is fully resumable; interrupted runs continue from where they left off.
+**Rate limiting** — Raise `--base-delay` (default 1.5s) or narrow the year range. Extraction is resumable; interrupted runs pick up where they left off.
 
-**Incomplete data** — If a season is still in progress, the current-year rounds that haven't been raced yet will be skipped automatically.
+**Incomplete season** — In-progress rounds are skipped automatically.
 
-**MySQL connection errors** — Verify credentials in `scripts/config.py` and that the server is running (`mysql.server status`).
+**MySQL errors** — Verify credentials in `scripts/config.py` and confirm the server is running (`mysql.server status`).
