@@ -63,9 +63,9 @@ CREATE TABLE races (
 -- 6. QUALIFYING RESULTS TABLE
 CREATE TABLE qualifying (
     qualify_id INT PRIMARY KEY AUTO_INCREMENT,
-    race_id INT,
-    driver_id INT,
-    constructor_id INT,
+    race_id INT NOT NULL,
+    driver_id INT NOT NULL,
+    constructor_id INT NOT NULL,
     number INT,
     position INT,
     q1 VARCHAR(20),
@@ -80,16 +80,16 @@ CREATE TABLE qualifying (
 -- 7. RACE RESULTS TABLE
 CREATE TABLE results (
     result_id INT PRIMARY KEY AUTO_INCREMENT,
-    race_id INT,
-    driver_id INT,
-    constructor_id INT,
+    race_id INT NOT NULL,
+    driver_id INT NOT NULL,
+    constructor_id INT NOT NULL,
     number INT,
     grid INT,
     position INT,
     position_text VARCHAR(10),
-    position_order INT,
-    points DECIMAL(5, 2),
-    laps INT,
+    position_order INT CHECK (position_order >= 0),
+    points DECIMAL(5, 2) CHECK (points >= 0),
+    laps INT CHECK (laps >= 0),
     time_result VARCHAR(50),
     milliseconds BIGINT,
     fastest_lap INT,
@@ -107,8 +107,8 @@ CREATE TABLE results (
 -- 8. PIT STOPS TABLE
 CREATE TABLE pit_stops (
     pit_stop_id INT PRIMARY KEY AUTO_INCREMENT,
-    race_id INT,
-    driver_id INT,
+    race_id INT NOT NULL,
+    driver_id INT NOT NULL,
     stop INT,
     lap INT,
     time_of_day TIME,
@@ -122,8 +122,8 @@ CREATE TABLE pit_stops (
 -- 9. CONSTRUCTOR STANDINGS TABLE
 CREATE TABLE constructor_standings (
     standing_id INT PRIMARY KEY AUTO_INCREMENT,
-    race_id INT,
-    constructor_id INT,
+    race_id INT NOT NULL,
+    constructor_id INT NOT NULL,
     points DECIMAL(6, 2),
     position INT,
     position_text VARCHAR(10),
@@ -136,8 +136,8 @@ CREATE TABLE constructor_standings (
 -- 10. DRIVER STANDINGS TABLE
 CREATE TABLE driver_standings (
     standing_id INT PRIMARY KEY AUTO_INCREMENT,
-    race_id INT,
-    driver_id INT,
+    race_id INT NOT NULL,
+    driver_id INT NOT NULL,
     points DECIMAL(6, 2),
     position INT,
     position_text VARCHAR(10),
@@ -177,6 +177,7 @@ CREATE INDEX idx_results_race ON results(race_id);
 CREATE INDEX idx_results_driver ON results(driver_id);
 CREATE INDEX idx_results_constructor ON results(constructor_id);
 CREATE INDEX idx_qualifying_race ON qualifying(race_id);
+CREATE INDEX idx_qualifying_driver ON qualifying(driver_id);
 CREATE INDEX idx_pit_stops_race ON pit_stops(race_id);
 CREATE INDEX idx_constructor_standings_race ON constructor_standings(race_id);
 CREATE INDEX idx_driver_standings_race ON driver_standings(race_id);

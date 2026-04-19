@@ -5,6 +5,7 @@ import os
 import sys
 
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -31,7 +32,7 @@ def _as_round_set(skipped: Optional[Dict[str, List[int]]]) -> Set[Tuple[int, int
 
 
 def run_quality_checks(
-    engine,
+    engine: Engine,
     start_year: int = DEFAULT_START_YEAR,
     end_year: int = DEFAULT_END_YEAR,
     skipped_rounds: Optional[Dict[str, Dict[str, List[int]]]] = None,
@@ -140,6 +141,15 @@ def run_quality_checks(
     add_check(
         "results_position_order_non_negative",
         "SELECT COUNT(*) AS value FROM results WHERE position_order < 0",
+    )
+    add_check(
+        "results_position_order_consistency",
+        """
+        SELECT COUNT(*) AS value FROM results
+        WHERE position IS NOT NULL
+          AND CAST(position AS INTEGER) BETWEEN 1 AND 20
+          AND position_order = 999
+        """,
     )
 
     failures: List[Dict[str, str]] = []

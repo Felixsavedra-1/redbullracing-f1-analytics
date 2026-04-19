@@ -246,7 +246,7 @@ class TestPipelineSmoke(unittest.TestCase):
 
                 # No NULL primary keys — a NULL PK indicates a broken ref-map or schema issue.
                 for table, pk in [("drivers", "driver_id"), ("races", "race_id"),
-                                   ("circuits", "circuit_id"), ("constructors", "constructor_id")]:
+                                  ("circuits", "circuit_id"), ("constructors", "constructor_id")]:
                     cur.execute(f"SELECT COUNT(*) FROM {table} WHERE {pk} IS NULL")
                     self.assertEqual(cur.fetchone()[0], 0, f"{table}.{pk} must not be NULL")
 

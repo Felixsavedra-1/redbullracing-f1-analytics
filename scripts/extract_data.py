@@ -17,6 +17,21 @@ if SCRIPT_DIR not in sys.path:
 from logging_utils import setup_logging
 from constants import DEFAULT_START_YEAR, DEFAULT_END_YEAR, DNF_POSITION_ORDER
 
+
+def _safe_float(val) -> Optional[float]:
+    try:
+        return float(val) if val else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_int(val) -> Optional[int]:
+    try:
+        return int(val) if val else None
+    except (ValueError, TypeError):
+        return None
+
+
 class F1DataExtractor:
     BASE_URL = "https://api.jolpi.ca/ergast/f1"
 
@@ -222,8 +237,8 @@ class F1DataExtractor:
                     'circuit_name': circuit.get('circuitName', ''),
                     'location': location.get('locality', ''),
                     'country': location.get('country', ''),
-                    'lat': float(location.get('lat', 0)) if location.get('lat') else None,
-                    'lng': float(location.get('long', 0)) if location.get('long') else None,
+                    'lat': _safe_float(location.get('lat')),
+                    'lng': _safe_float(location.get('long')),
                     'altitude': None,
                     'url': circuit.get('url', ''),
                 })
@@ -379,8 +394,8 @@ class F1DataExtractor:
                 "race_id": race_id,
                 "driver_ref": driver.get("driverId", ""),
                 "constructor_ref": constructor.get("constructorId", ""),
-                "number": int(result.get("number", 0)) if result.get("number") else None,
-                "grid": int(result.get("grid", 0)) if result.get("grid") else None,
+                "number": _safe_int(result.get("number")),
+                "grid": _safe_int(result.get("grid")),
                 "position": int(position) if position.isdigit() else None,
                 "position_text": result.get("positionText", ""),
                 "position_order": int(position) if position.isdigit() else DNF_POSITION_ORDER,
@@ -618,6 +633,16 @@ class F1DataExtractor:
         end_year: int = DEFAULT_END_YEAR,
         skip_pit_stops: bool = False,
     ):
+        self._total_rate_limits = 0
+        self._consecutive_rate_limits = 0
+        if start_year < DEFAULT_START_YEAR:
+            self.logger.warning(
+                "start_year %s is before project scope; clamping to %s.", start_year, DEFAULT_START_YEAR
+            )
+        if end_year > DEFAULT_END_YEAR:
+            self.logger.warning(
+                "end_year %s is beyond project scope; clamping to %s.", end_year, DEFAULT_END_YEAR
+            )
         start_year = max(DEFAULT_START_YEAR, start_year)
         end_year = min(DEFAULT_END_YEAR, end_year)
         if start_year > end_year:

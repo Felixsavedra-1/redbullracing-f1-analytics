@@ -43,41 +43,41 @@ CREATE TABLE IF NOT EXISTS races (
     race_id INTEGER PRIMARY KEY,
     year INTEGER,
     round INTEGER,
-    circuit_id INTEGER,
+    circuit_id INTEGER NOT NULL,
     race_name TEXT,
     race_date TEXT,
     race_time TEXT,
     url TEXT,
-    FOREIGN KEY (year) REFERENCES seasons(year),
-    FOREIGN KEY (circuit_id) REFERENCES circuits(circuit_id)
+    FOREIGN KEY (year) REFERENCES seasons(year) ON DELETE RESTRICT,
+    FOREIGN KEY (circuit_id) REFERENCES circuits(circuit_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS qualifying (
-    race_id INTEGER,
-    driver_id INTEGER,
-    constructor_id INTEGER,
+    race_id INTEGER NOT NULL,
+    driver_id INTEGER NOT NULL,
+    constructor_id INTEGER NOT NULL,
     number INTEGER,
     position INTEGER,
     q1 TEXT,
     q2 TEXT,
     q3 TEXT,
     PRIMARY KEY (race_id, driver_id),
-    FOREIGN KEY (race_id) REFERENCES races(race_id),
-    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id),
-    FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id)
+    FOREIGN KEY (race_id) REFERENCES races(race_id) ON DELETE RESTRICT,
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id) ON DELETE RESTRICT,
+    FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS results (
-    race_id INTEGER,
-    driver_id INTEGER,
-    constructor_id INTEGER,
+    race_id INTEGER NOT NULL,
+    driver_id INTEGER NOT NULL,
+    constructor_id INTEGER NOT NULL,
     number INTEGER,
     grid INTEGER,
     position INTEGER,
     position_text TEXT,
-    position_order INTEGER,
-    points REAL,
-    laps INTEGER,
+    position_order INTEGER CHECK (position_order >= 0),
+    points REAL CHECK (points >= 0),
+    laps INTEGER CHECK (laps >= 0),
     time_result TEXT,
     milliseconds INTEGER,
     fastest_lap INTEGER,
@@ -86,46 +86,46 @@ CREATE TABLE IF NOT EXISTS results (
     fastest_lap_speed TEXT,
     status TEXT,
     PRIMARY KEY (race_id, driver_id, constructor_id),
-    FOREIGN KEY (race_id) REFERENCES races(race_id),
-    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id),
-    FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id)
+    FOREIGN KEY (race_id) REFERENCES races(race_id) ON DELETE RESTRICT,
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id) ON DELETE RESTRICT,
+    FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS pit_stops (
-    race_id INTEGER,
-    driver_id INTEGER,
+    race_id INTEGER NOT NULL,
+    driver_id INTEGER NOT NULL,
     stop INTEGER,
     lap INTEGER,
     time_of_day TEXT,
     duration TEXT,
     milliseconds INTEGER,
     PRIMARY KEY (race_id, driver_id, stop),
-    FOREIGN KEY (race_id) REFERENCES races(race_id),
-    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
+    FOREIGN KEY (race_id) REFERENCES races(race_id) ON DELETE RESTRICT,
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS constructor_standings (
-    race_id INTEGER,
-    constructor_id INTEGER,
-    points REAL,
+    race_id INTEGER NOT NULL,
+    constructor_id INTEGER NOT NULL,
+    points REAL CHECK (points >= 0),
     position INTEGER,
     position_text TEXT,
     wins INTEGER,
     PRIMARY KEY (race_id, constructor_id),
-    FOREIGN KEY (race_id) REFERENCES races(race_id),
-    FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id)
+    FOREIGN KEY (race_id) REFERENCES races(race_id) ON DELETE RESTRICT,
+    FOREIGN KEY (constructor_id) REFERENCES constructors(constructor_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS driver_standings (
-    race_id INTEGER,
-    driver_id INTEGER,
-    points REAL,
+    race_id INTEGER NOT NULL,
+    driver_id INTEGER NOT NULL,
+    points REAL CHECK (points >= 0),
     position INTEGER,
     position_text TEXT,
     wins INTEGER,
     PRIMARY KEY (race_id, driver_id),
-    FOREIGN KEY (race_id) REFERENCES races(race_id),
-    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
+    FOREIGN KEY (race_id) REFERENCES races(race_id) ON DELETE RESTRICT,
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS status (
@@ -150,8 +150,8 @@ CREATE TABLE IF NOT EXISTS laps (
     pit_out          INTEGER DEFAULT 0,
     track_status     TEXT,
     PRIMARY KEY (race_id, driver_id, lap_number),
-    FOREIGN KEY (race_id)   REFERENCES races(race_id),
-    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
+    FOREIGN KEY (race_id)   REFERENCES races(race_id) ON DELETE RESTRICT,
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_races_year ON races(year);
@@ -160,6 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_results_race ON results(race_id);
 CREATE INDEX IF NOT EXISTS idx_results_driver ON results(driver_id);
 CREATE INDEX IF NOT EXISTS idx_results_constructor ON results(constructor_id);
 CREATE INDEX IF NOT EXISTS idx_qualifying_race ON qualifying(race_id);
+CREATE INDEX IF NOT EXISTS idx_qualifying_driver ON qualifying(driver_id);
 CREATE INDEX IF NOT EXISTS idx_pit_stops_race   ON pit_stops(race_id);
 CREATE INDEX IF NOT EXISTS idx_pit_stops_driver ON pit_stops(driver_id);
 CREATE INDEX IF NOT EXISTS idx_constructor_standings_race ON constructor_standings(race_id);

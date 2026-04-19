@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, List
+from typing import Any, Callable, Dict, List, Tuple
 import pandas as pd
 from pandas.api.types import (
     is_datetime64_any_dtype,
@@ -94,6 +94,11 @@ SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
             "milliseconds", "fastest_lap", "fastest_lap_rank",
         ],
         "string": ["position_text", "time_result", "fastest_lap_time", "fastest_lap_speed", "status"],
+        "constraints": {
+            "points": ("min", 0),
+            "laps": ("min", 0),
+            "position_order": ("min", 0),
+        },
     },
     "qualifying": {
         "required": [
@@ -157,6 +162,9 @@ SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
             "tyre_life", "stint", "is_personal_best", "pit_in", "pit_out",
         ],
         "string": ["compound", "track_status"],
+        "constraints": {
+            "compound": ("enum", ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"]),
+        },
     },
 }
 
@@ -170,6 +178,23 @@ def _check_types(df: pd.DataFrame, columns: List[str], type_name: str) -> List[s
         for col in columns
         if col in df.columns and not checker(df[col])
     ]
+
+
+def _check_constraints(df: pd.DataFrame, constraints: Dict[str, Tuple[str, Any]]) -> List[str]:
+    issues = []
+    for col, (kind, bound) in constraints.items():
+        if col not in df.columns:
+            continue
+        series = df[col].dropna()
+        if kind == "min":
+            bad = int((series < bound).sum())
+            if bad:
+                issues.append(f"{col} has {bad} values below minimum {bound}")
+        elif kind == "enum":
+            bad_vals = set(series.unique()) - set(bound) - {""}
+            if bad_vals:
+                issues.append(f"{col} has unexpected values: {sorted(bad_vals)}")
+    return issues
 
 
 def validate_dataframe(table_name: str, df: pd.DataFrame) -> List[str]:
@@ -187,5 +212,6 @@ def validate_dataframe(table_name: str, df: pd.DataFrame) -> List[str]:
     issues.extend(_check_types(df, contract.get("numeric", []), "numeric"))
     issues.extend(_check_types(df, contract.get("string", []), "string"))
     issues.extend(_check_types(df, contract.get("datetime", []), "datetime"))
+    issues.extend(_check_constraints(df, contract.get("constraints", {})))
 
     return issues

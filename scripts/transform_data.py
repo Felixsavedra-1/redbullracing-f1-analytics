@@ -52,10 +52,12 @@ class F1DataTransformer:
         mapped = df[ref_col].map(ref_map)
         unmapped_count = int(mapped.isna().sum())
         if unmapped_count:
-            self.logger.warning(
-                "Dropping %s rows with unmapped %s values (not in %s).",
-                unmapped_count, ref_col, filename,
-            )
+            dropout_pct = 100.0 * unmapped_count / len(df)
+            msg = "Dropping %s rows (%.1f%%) with unmapped %s values (not in %s)."
+            if dropout_pct > 5.0:
+                self.logger.error(msg, unmapped_count, dropout_pct, ref_col, filename)
+            else:
+                self.logger.warning(msg, unmapped_count, dropout_pct, ref_col, filename)
             df = df[mapped.notna()].copy()
             mapped = mapped[mapped.notna()]
 
@@ -218,6 +220,8 @@ class F1DataTransformer:
             df["status"] = ""
 
         if "position_order" not in df.columns:
+            # Derive from position as fallback. Non-numeric position (R=retired, D/DQ=disqualified)
+            # all map to the same sentinel; use the `status` column to distinguish DNF vs DSQ downstream.
             df["position_order"] = df["position"].fillna(DNF_POSITION_ORDER)
         df["position_order"] = pd.to_numeric(
             df["position_order"], errors="coerce"

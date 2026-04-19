@@ -26,7 +26,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-from constants import CONSTRUCTOR_ID, TEAM_REFS, TEAM_NAME, TEAM_COLORS
+from constants import CONSTRUCTOR_ID, TEAM_REFS, TEAM_NAME
 from load_data import _build_connection_string
 from logging_utils import setup_logging
 

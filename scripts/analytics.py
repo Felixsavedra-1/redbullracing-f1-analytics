@@ -4,10 +4,10 @@ import os
 import re
 import sys
 
-import numpy as np
 import pandas as pd
 from scipy import stats
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -26,7 +26,7 @@ def _refs_sql(refs: list[str]) -> str:
 
 
 def teammate_delta(
-    engine,
+    engine: Engine,
     constructor_id: int = CONSTRUCTOR_ID,
     min_shared_races: int = 5,
 ) -> pd.DataFrame:
@@ -38,8 +38,8 @@ def teammate_delta(
     """
     sql = """
     SELECT
-        da.forename || ' ' || da.surname AS driver_a,
-        db.forename || ' ' || db.surname AS driver_b,
+        COALESCE(da.forename, '') || ' ' || COALESCE(da.surname, '') AS driver_a,
+        COALESCE(db.forename, '') || ' ' || COALESCE(db.surname, '') AS driver_b,
         CAST(ra.position_order AS INTEGER) - CAST(rb.position_order AS INTEGER) AS delta
     FROM results ra
     JOIN results rb
@@ -72,11 +72,13 @@ def teammate_delta(
             n=n, p_value=round(p, 6),
         ))
 
+    if not rows:
+        return pd.DataFrame(columns=["driver_a", "driver_b", "mean_delta", "ci_lower", "ci_upper", "n", "p_value"])
     return pd.DataFrame(rows).sort_values("mean_delta").reset_index(drop=True)
 
 
 def qualifying_race_ols(
-    engine,
+    engine: Engine,
     constructor_id: int = CONSTRUCTOR_ID,
 ) -> tuple[dict, pd.DataFrame]:
     """
@@ -86,7 +88,7 @@ def qualifying_race_ols(
     """
     sql = """
     SELECT
-        da.forename || ' ' || da.surname AS driver,
+        COALESCE(da.forename, '') || ' ' || COALESCE(da.surname, '') AS driver,
         CAST(r.grid          AS INTEGER) AS grid,
         CAST(r.position_order AS INTEGER) AS finish
     FROM results r
@@ -103,7 +105,7 @@ def qualifying_race_ols(
 
 
 def pit_stop_efficiency(
-    engine,
+    engine: Engine,
     team_refs: list[str] = TEAM_REFS,
     min_stops: int = 5,
 ) -> pd.DataFrame:
@@ -149,7 +151,7 @@ def pit_stop_efficiency(
     return agg[agg["n_stops"] >= min_stops].sort_values("mean_z").reset_index(drop=True)
 
 
-def championship_trajectory(engine, team_refs: list[str] = TEAM_REFS) -> pd.DataFrame:
+def championship_trajectory(engine: Engine, team_refs: list[str] = TEAM_REFS) -> pd.DataFrame:
     """
     Cumulative championship points per driver per round, all seasons.
     Returns: year | round | driver | points | position
@@ -158,7 +160,7 @@ def championship_trajectory(engine, team_refs: list[str] = TEAM_REFS) -> pd.Data
     sql = f"""
     SELECT
         ra.year, ra.round,
-        da.forename || ' ' || da.surname AS driver,
+        COALESCE(da.forename, '') || ' ' || COALESCE(da.surname, '') AS driver,
         ds.points, ds.position
     FROM driver_standings ds
     JOIN races ra       ON ds.race_id          = ra.race_id
@@ -174,7 +176,7 @@ def championship_trajectory(engine, team_refs: list[str] = TEAM_REFS) -> pd.Data
 
 
 def dnf_rate_model(
-    engine,
+    engine: Engine,
     team_refs: list[str] = TEAM_REFS,
     min_races: int = 10,
 ) -> pd.DataFrame:
@@ -186,7 +188,7 @@ def dnf_rate_model(
     refs = _refs_sql(team_refs)
     sql = f"""
     SELECT
-        da.forename || ' ' || da.surname AS driver,
+        COALESCE(da.forename, '') || ' ' || COALESCE(da.surname, '') AS driver,
         COUNT(*) AS races,
         SUM(CASE WHEN r.position_order = 999 THEN 1 ELSE 0 END) AS dnfs
     FROM results r
@@ -213,7 +215,7 @@ def dnf_rate_model(
 
 
 def tyre_degradation(
-    engine,
+    engine: Engine,
     team_refs: list[str] = TEAM_REFS,
     min_laps: int = 5,
 ) -> pd.DataFrame:
@@ -258,7 +260,7 @@ def tyre_degradation(
 
 
 def sector_deltas(
-    engine,
+    engine: Engine,
     constructor_id: int = CONSTRUCTOR_ID,
     min_laps: int = 10,
 ) -> pd.DataFrame:

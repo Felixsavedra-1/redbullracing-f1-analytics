@@ -6,6 +6,7 @@ import argparse
 import pandas as pd
 import yaml
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -30,11 +31,13 @@ _DEFAULT_QUERIES_FILE = os.path.normpath(
 )
 
 
-def create_db_connection(config=None):
+def create_db_connection(config: dict | None = None) -> Engine:
     return create_engine(_build_connection_string(config or DB_CONFIG))
 
 
-def execute_query(engine, query_name, query_text, params=None):
+def execute_query(
+    engine: Engine, query_name: str, query_text: str, params: dict | None = None
+) -> pd.DataFrame | None:
     try:
         with engine.connect() as conn:
             df = pd.read_sql(text(query_text), conn, params=params)
@@ -44,7 +47,7 @@ def execute_query(engine, query_name, query_text, params=None):
         return None
 
 
-def export_results(df, filename, output_path=None):
+def export_results(df: pd.DataFrame, filename: str, output_path: str | None = None) -> None:
     output_path = output_path or DATA_PATHS.get("processed_data", "data/processed/")
     os.makedirs(output_path, exist_ok=True)
     filepath = os.path.join(output_path, filename)
@@ -83,12 +86,13 @@ def main():
     team_refs_sql = ", ".join(f"'{r}'" for r in TEAM_REFS)
 
     sqlite_version = None
-    with engine.connect() as conn:
-        row = conn.execute(text("SELECT sqlite_version()")).fetchone()
-        if row:
-            sqlite_version = tuple(int(x) for x in row[0].split("."))
+    if (DB_CONFIG or {}).get("type", "sqlite") == "sqlite":
+        with engine.connect() as conn:
+            row = conn.execute(text("SELECT sqlite_version()")).fetchone()
+            if row:
+                sqlite_version = tuple(int(x) for x in row[0].split("."))
 
-    _WINDOW_FN_QUERIES = {"championship_progression"}
+    _WINDOW_FN_QUERIES = {"championship_progression", "failure_modes"}
     _MIN_SQLITE_FOR_WINDOW = (3, 25, 0)
 
     queries = load_queries_from_yaml(args.file)

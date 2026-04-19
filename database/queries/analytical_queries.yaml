@@ -60,7 +60,8 @@ qualifying_vs_race_performance: |
   SELECT
       COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')                                                 AS driver_name,
       r.year,
-      COUNT(*)                                                                       AS races,
+      COUNT(*)                                                                       AS races_started,
+      COUNT(q.position)                                                              AS races_with_qualifying,
       ROUND(AVG(q.position), 2)                                                     AS avg_qual_position,
       ROUND(AVG(CASE WHEN res.position_order < 999 THEN res.position_order END), 2) AS avg_race_position,
       ROUND(AVG(CASE WHEN res.position_order < 999
@@ -195,7 +196,7 @@ failure_modes: |
   SELECT
       res.status,
       COUNT(*)                                                                       AS occurrences,
-      ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM results WHERE constructor_id = :cid), 2) AS percentage
+      ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2)                            AS percentage
   FROM results res
   WHERE res.constructor_id = :cid
   GROUP BY res.status

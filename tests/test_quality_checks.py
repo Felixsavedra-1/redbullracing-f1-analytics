@@ -83,5 +83,81 @@ class TestQualityChecks(unittest.TestCase):
             self.assertEqual(failures, [])
 
 
+class TestQualityCheckFailures(unittest.TestCase):
+    """Each test inserts exactly one violation and verifies the specific check fires."""
+
+    def _engine_with_base_data(self):
+        engine = create_engine("sqlite:///:memory:")
+        apply_sqlite_schema(engine)
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO circuits VALUES (1,'silverstone','Silverstone','Silverstone','UK',52.07,-1.02,0,'')"
+            ))
+            conn.execute(text("INSERT INTO seasons VALUES (2024,'')"))
+            conn.execute(text(
+                "INSERT INTO constructors VALUES (1,'red_bull','Red Bull','Austrian','')"
+            ))
+            conn.execute(text(
+                "INSERT INTO drivers VALUES (1,'ver',33,'VER','Max','Verstappen','1997-09-30','Dutch','')"
+            ))
+            conn.execute(text(
+                "INSERT INTO races VALUES (202401,2024,1,1,'British GP','2024-07-07','14:00','')"
+            ))
+        return engine
+
+    def _check_names(self, failures):
+        return {f["check"] for f in failures}
+
+    def test_results_empty_fires_when_no_results(self):
+        engine = self._engine_with_base_data()
+        failures = run_quality_checks(engine, start_year=2024, end_year=2024)
+        self.assertIn("results_non_empty", self._check_names(failures))
+
+    def test_race_outside_year_range_fires(self):
+        engine = self._engine_with_base_data()
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO seasons VALUES (2099,'')"))
+            conn.execute(text(
+                "INSERT INTO races VALUES (209901,2099,1,1,'Future GP','2099-01-01','14:00','')"
+            ))
+            conn.execute(text(
+                "INSERT INTO results VALUES "
+                "(202401,1,1,33,1,1,'1',1,25,52,'',0,0,0,'','','Finished')"
+            ))
+            conn.execute(text(
+                "INSERT INTO qualifying VALUES (202401,1,1,33,1,'1:21','1:20','1:20')"
+            ))
+        failures = run_quality_checks(engine, start_year=2024, end_year=2024)
+        self.assertIn("races_outside_year_range", self._check_names(failures))
+
+    def test_position_order_consistency_fires(self):
+        engine = self._engine_with_base_data()
+        with engine.begin() as conn:
+            # position=1 (valid finish) but position_order=999 (DNF sentinel) — contradiction
+            conn.execute(text(
+                "INSERT INTO results VALUES "
+                "(202401,1,1,33,1,1,'1',999,25,52,'',0,0,0,'','','Finished')"
+            ))
+            conn.execute(text(
+                "INSERT INTO qualifying VALUES (202401,1,1,33,1,'1:21','1:20','1:20')"
+            ))
+        failures = run_quality_checks(engine, start_year=2024, end_year=2024)
+        self.assertIn("results_position_order_consistency", self._check_names(failures))
+
+    def test_missing_race_year_fires(self):
+        engine = self._engine_with_base_data()
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO results VALUES "
+                "(202401,1,1,33,1,1,'1',1,25,52,'',0,0,0,'','','Finished')"
+            ))
+            conn.execute(text(
+                "INSERT INTO qualifying VALUES (202401,1,1,33,1,'1:21','1:20','1:20')"
+            ))
+        # Request year range 2023-2024 but only 2024 exists → 2023 missing
+        failures = run_quality_checks(engine, start_year=2023, end_year=2024)
+        self.assertIn("missing_race_years", self._check_names(failures))
+
+
 if __name__ == "__main__":
     unittest.main()

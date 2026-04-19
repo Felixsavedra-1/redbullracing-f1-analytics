@@ -146,9 +146,6 @@ class F1DataLoader:
             conn.commit()
 
     def _record_run_start(self) -> None:
-        # Pipeline audit tables are only created for MySQL deployments.
-        if self.config.get("type") == "sqlite":
-            return
         started_at = datetime.now(timezone.utc).isoformat()
         with self.engine.connect() as conn:
             conn.execute(
@@ -169,8 +166,6 @@ class F1DataLoader:
             conn.commit()
 
     def _record_run_end(self, status: str) -> None:
-        if self.config.get("type") == "sqlite":
-            return
         ended_at = datetime.now(timezone.utc).isoformat()
         with self.engine.connect() as conn:
             conn.execute(
@@ -254,7 +249,6 @@ class F1DataLoader:
 
     def _load_table_incremental(self, df: pd.DataFrame, table_name: str) -> None:
         staging_table = f"_stg_{table_name}"
-        df.to_sql(staging_table, self.engine, if_exists="replace", index=False)
 
         columns = [self._quote(col) for col in df.columns]
         column_list = ", ".join(columns)
@@ -274,13 +268,12 @@ class F1DataLoader:
             )
 
         try:
-            with self.engine.connect() as conn:
+            with self.engine.begin() as conn:
+                df.to_sql(staging_table, conn, if_exists="replace", index=False)
                 conn.execute(text(upsert_sql))
-                conn.commit()
         finally:
-            with self.engine.connect() as conn:
+            with self.engine.begin() as conn:
                 conn.execute(text(f"DROP TABLE IF EXISTS {staging_table}"))
-                conn.commit()
 
     def _load_table(self, df: pd.DataFrame, table_name: str) -> None:
         if df.empty:
