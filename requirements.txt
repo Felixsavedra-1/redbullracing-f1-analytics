@@ -5,3 +5,5 @@ pymysql==1.1.0
 numpy==1.24.3
 pyyaml>=6.0
 scipy>=1.11.0
+plotly>=5.18.0
+fastf1>=3.3.0

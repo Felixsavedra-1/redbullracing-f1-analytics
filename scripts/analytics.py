@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 
+import numpy as np
 import pandas as pd
 from scipy import stats
 from sqlalchemy import text
@@ -13,8 +15,13 @@ if SCRIPT_DIR not in sys.path:
 
 from constants import CONSTRUCTOR_ID, TEAM_REFS
 
+_REF_RE = re.compile(r'^[a-z0-9_]+$')
+
 
 def _refs_sql(refs: list[str]) -> str:
+    for r in refs:
+        if not _REF_RE.match(r):
+            raise ValueError(f"Invalid team ref (must be lowercase alphanumeric/underscore): {r!r}")
     return ", ".join(f"'{r}'" for r in refs)
 
 
@@ -50,10 +57,10 @@ def teammate_delta(
 
     rows = []
     for (a, b), g in df.groupby(["driver_a", "driver_b"]):
-        n = len(g)
+        d = g["delta"].dropna().values.astype(float)
+        n = len(d)
         if n < min_shared_races:
             continue
-        d = g["delta"].values.astype(float)
         mean = d.mean()
         _, p = stats.ttest_1samp(d, 0)
         ci = stats.t.interval(0.95, n - 1, loc=mean, scale=stats.sem(d))
@@ -203,3 +210,81 @@ def dnf_rate_model(
         axis=1,
     )
     return df.sort_values("rate", ascending=False).reset_index(drop=True)
+
+
+def tyre_degradation(
+    engine,
+    team_refs: list[str] = TEAM_REFS,
+    min_laps: int = 5,
+) -> pd.DataFrame:
+    """
+    OLS degradation rate (seconds lost per additional lap on tyre) per driver per compound.
+    Green-flag laps only (track_status='1'), tyre_life > 1.
+    Returns: driver | compound | deg_rate_s | r2 | n
+    Positive deg_rate_s = lap time grows with tyre age (expected).
+    """
+    refs = _refs_sql(team_refs)
+    sql = f"""
+    SELECT COALESCE(d.forename,'') || ' ' || COALESCE(d.surname,'') AS driver,
+           l.compound, l.tyre_life, l.lap_time_s
+    FROM laps l
+    JOIN results      res ON l.race_id         = res.race_id
+                         AND l.driver_id       = res.driver_id
+    JOIN constructors c   ON res.constructor_id = c.constructor_id
+    JOIN drivers      d   ON l.driver_id        = d.driver_id
+    WHERE c.constructor_ref IN ({refs})
+      AND l.compound     IN ('SOFT','MEDIUM','HARD')
+      AND l.lap_time_s   IS NOT NULL
+      AND l.tyre_life    > 1
+      AND l.track_status = '1'
+    """
+    with engine.connect() as conn:
+        df = pd.read_sql(text(sql), conn)
+    if df.empty:
+        return pd.DataFrame(columns=["driver", "compound", "deg_rate_s", "r2", "n"])
+
+    rows = []
+    for (driver, compound), g in df.groupby(["driver", "compound"]):
+        g = g.dropna(subset=["lap_time_s", "tyre_life"])
+        if len(g) < min_laps:
+            continue
+        slope, _, r_val, _, _ = stats.linregress(g["tyre_life"], g["lap_time_s"])
+        rows.append(dict(
+            driver=driver, compound=compound,
+            deg_rate_s=round(slope, 4), r2=round(r_val ** 2, 3), n=len(g),
+        ))
+
+    return pd.DataFrame(rows).sort_values(["compound", "deg_rate_s"]).reset_index(drop=True)
+
+
+def sector_deltas(
+    engine,
+    constructor_id: int = CONSTRUCTOR_ID,
+    min_laps: int = 10,
+) -> pd.DataFrame:
+    """
+    Mean sector times per driver on green-flag laps.
+    Returns: driver | s1_mean | s2_mean | s3_mean | n
+    Sorted by combined sector time (fastest first).
+    """
+    sql = """
+    SELECT COALESCE(d.forename,'') || ' ' || COALESCE(d.surname,'') AS driver,
+           AVG(l.sector1_s) AS s1_mean,
+           AVG(l.sector2_s) AS s2_mean,
+           AVG(l.sector3_s) AS s3_mean,
+           COUNT(*)          AS n
+    FROM laps l
+    JOIN results res ON l.race_id  = res.race_id AND l.driver_id = res.driver_id
+    JOIN drivers d   ON l.driver_id = d.driver_id
+    WHERE res.constructor_id = :cid
+      AND l.track_status  = '1'
+      AND l.lap_time_s   IS NOT NULL
+      AND l.sector1_s    IS NOT NULL
+      AND l.sector2_s    IS NOT NULL
+      AND l.sector3_s    IS NOT NULL
+    GROUP BY l.driver_id, d.forename, d.surname
+    HAVING COUNT(*) >= :min_laps
+    ORDER BY s1_mean + s2_mean + s3_mean
+    """
+    with engine.connect() as conn:
+        return pd.read_sql(text(sql), conn, params={"cid": constructor_id, "min_laps": min_laps})

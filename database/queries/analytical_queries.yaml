@@ -4,7 +4,7 @@
 
 driver_summary: |
   SELECT
-      d.forename || ' ' || d.surname AS driver,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '') AS driver,
       GROUP_CONCAT(DISTINCT con.constructor_name) AS team,
       COUNT(DISTINCT r.year) AS seasons,
       COUNT(*) AS races,
@@ -41,7 +41,7 @@ team_performance_overview: |
 driver_performance_comparison: |
   SELECT
       r.year                                                                         AS season,
-      d.forename || ' ' || d.surname                                                 AS driver_name,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')                                                 AS driver_name,
       COUNT(*)                                                                       AS races,
       SUM(res.points)                                                                AS total_points,
       COUNT(CASE WHEN res.position = 1   THEN 1 END)                                AS wins,
@@ -58,7 +58,7 @@ driver_performance_comparison: |
 
 qualifying_vs_race_performance: |
   SELECT
-      d.forename || ' ' || d.surname                                                 AS driver_name,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')                                                 AS driver_name,
       r.year,
       COUNT(*)                                                                       AS races,
       ROUND(AVG(q.position), 2)                                                     AS avg_qual_position,
@@ -97,12 +97,12 @@ circuit_performance_analysis: |
 pit_stop_efficiency: |
   SELECT
       r.year                                                                         AS season,
-      d.forename || ' ' || d.surname                                                 AS driver_name,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')                                                 AS driver_name,
       COUNT(*)                                                                       AS total_stops,
       MIN(ps.milliseconds)                                                           AS fastest_stop_ms,
       ROUND(AVG(ps.milliseconds), 0)                                                 AS avg_stop_ms,
       MAX(ps.milliseconds)                                                           AS slowest_stop_ms,
-      ROUND(SQRT(AVG(ps.milliseconds * ps.milliseconds) - AVG(ps.milliseconds) * AVG(ps.milliseconds)), 0) AS std_dev_ms
+      NULL AS std_dev_ms
   FROM pit_stops ps
   JOIN races   r   ON ps.race_id  = r.race_id
   JOIN drivers d   ON ps.driver_id = d.driver_id
@@ -115,7 +115,7 @@ fastest_pit_stops: |
   SELECT
       r.year,
       r.race_name,
-      d.forename || ' ' || d.surname  AS driver_name,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')  AS driver_name,
       ps.stop                         AS stop_number,
       ps.lap,
       ps.duration,
@@ -129,6 +129,7 @@ fastest_pit_stops: |
   LIMIT 10
 
 championship_progression: |
+  -- Requires SQLite >= 3.25 for LAG() window function.
   SELECT
       cs.race_id,
       r.year,
@@ -150,7 +151,7 @@ driver_championship_battle: |
       r.year,
       r.round,
       r.race_name,
-      d.forename || ' ' || d.surname  AS driver_name,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')  AS driver_name,
       ds.position                     AS championship_position,
       ds.points                       AS points_accumulated,
       ds.wins                         AS wins_accumulated
@@ -164,7 +165,7 @@ driver_championship_battle: |
 fastest_laps_analysis: |
   SELECT
       r.year                                                                         AS season,
-      d.forename || ' ' || d.surname                                                 AS driver_name,
+      COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '')                                                 AS driver_name,
       COUNT(CASE WHEN res.fastest_lap_rank = 1 THEN 1 END)                          AS fastest_laps,
       COUNT(*)                                                                       AS total_races,
       ROUND(COUNT(CASE WHEN res.fastest_lap_rank = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS fastest_lap_percentage

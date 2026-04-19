@@ -2,7 +2,6 @@
 Data transformation utilities for F1 analytics.
 """
 
-import functools
 import os
 import sys
 import pandas as pd
@@ -36,10 +35,7 @@ class F1DataTransformer:
             self.logger.warning("%s has no parseable data.", filename)
             return None
 
-    @functools.lru_cache(maxsize=None)
     def _load_ref_map(self, filename: str, ref_col: str, id_col: str) -> dict:
-        # Cached per (filename, ref_col, id_col). One instance per pipeline run — do not
-        # reuse across separate extractions if raw CSVs may have changed between them.
         df = pd.read_csv(os.path.join(self.raw_path, filename))
         if id_col not in df.columns:
             df[id_col] = range(1, len(df) + 1)
@@ -82,7 +78,7 @@ class F1DataTransformer:
             return empty
 
         df["circuit_id"] = range(1, len(df) + 1)
-        df["altitude"] = df["altitude"].fillna(0)
+        # Leave altitude as NaN when missing — 0 is valid (sea level) and must stay distinguishable.
         df = df[[
             "circuit_id",
             "circuit_ref",

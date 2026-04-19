@@ -146,6 +146,18 @@ SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
         "numeric": ["race_id", "driver_id", "points", "position", "wins"],
         "string": ["position_text"],
     },
+    "laps": {
+        "required": [
+            "race_id", "driver_id", "lap_number",
+            "lap_time_s", "compound", "tyre_life", "stint",
+        ],
+        "numeric": [
+            "race_id", "driver_id", "lap_number",
+            "lap_time_s", "sector1_s", "sector2_s", "sector3_s",
+            "tyre_life", "stint", "is_personal_best", "pit_in", "pit_out",
+        ],
+        "string": ["compound", "track_status"],
+    },
 }
 
 

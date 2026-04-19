@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 
 import pandas as pd
@@ -16,6 +17,7 @@ from extract_data import F1DataExtractor
 from transform_data import F1DataTransformer
 from load_data import F1DataLoader
 from data_quality import run_quality_checks
+from extract_telemetry import extract_all as extract_telemetry
 
 
 def _load_skipped(name: str) -> dict:
@@ -71,8 +73,14 @@ def _shorten_teams(raw: str) -> str:
     return " · ".join(unique)
 
 
+_REF_RE = re.compile(r'^[a-z0-9_]+$')
+
+
 def _print_driver_summary(engine) -> None:
     try:
+        for r in TEAM_REFS:
+            if not _REF_RE.match(r):
+                raise ValueError(f"Invalid team ref: {r!r}")
         refs_sql = ", ".join(f"'{r}'" for r in TEAM_REFS)
         sql = _DRIVER_SUMMARY_SQL.format(team_refs=refs_sql)
         with engine.connect() as conn:
@@ -82,7 +90,7 @@ def _print_driver_summary(engine) -> None:
 
         df["team"]   = df["team"].apply(_shorten_teams)
         df["period"] = df.apply(
-            lambda r: f"{int(r.from_yr)}–{str(int(r.to_yr))[2:]}", axis=1
+            lambda r: f"{int(r.from_yr)}–{int(r.to_yr) % 100:02d}", axis=1
         )
         df["points"] = df["points"].astype(int)
         df = df[["driver", "team", "period", "races", "points",
@@ -122,6 +130,7 @@ def run_full_pipeline(
     skip_load: bool = False,
     skip_pit_stops: bool = False,
     skip_quality: bool = False,
+    include_telemetry: bool = False,
     mode: str = "full_refresh",
     strict_schema: bool = True,
     base_delay: float = 1.5,
@@ -206,6 +215,13 @@ def run_full_pipeline(
     else:
         logger.info("[3/3] SKIPPING DATABASE LOAD (--skip-load flag)")
 
+    if include_telemetry and not skip_load:
+        logger.info("[4/4] EXTRACTING FASTF1 LAP TELEMETRY")
+        try:
+            extract_telemetry(loader.engine, start_year=start_year, end_year=end_year)
+        except Exception:
+            logger.exception("Telemetry extraction failed — pipeline continues without lap data.")
+
     logger.info("Pipeline completed successfully.")
     logger.info("Next steps:")
     logger.info("  - Run queries: python scripts/run_queries.py --list")
@@ -257,6 +273,8 @@ Examples:
     parser.add_argument("--skip-quality", action="store_true", help="Skip data quality checks")
     parser.add_argument("--incremental", action="store_true", help="Use incremental load instead of full refresh")
     parser.add_argument("--no-strict-schema", action="store_true", help="Do not fail on schema contract warnings")
+    parser.add_argument("--telemetry", action="store_true",
+                        help="Extract FastF1 lap telemetry after load (sector times, tyre data)")
     parser.add_argument("--base-delay", type=float, default=1.5, help="Delay between API requests in seconds")
     parser.add_argument("--max-retries", type=int, default=6, help="Max retries on API errors or rate limits")
     parser.add_argument("--max-base-delay", type=float, default=8.0, help="Upper bound for adaptive delay")
@@ -287,6 +305,7 @@ Examples:
             skip_load=args.skip_load,
             skip_pit_stops=args.skip_pit_stops,
             skip_quality=args.skip_quality,
+            include_telemetry=args.telemetry,
             mode=mode,
             strict_schema=strict_schema,
             base_delay=args.base_delay,

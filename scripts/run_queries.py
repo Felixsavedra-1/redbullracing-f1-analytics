@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import argparse
 
@@ -21,6 +22,8 @@ except ImportError:
     DATA_PATHS = {"processed_data": "data/processed/"}
 
 logger = setup_logging()
+
+_REF_RE = re.compile(r'^[a-z0-9_]+$')
 
 _DEFAULT_QUERIES_FILE = os.path.normpath(
     os.path.join(SCRIPT_DIR, "..", "database", "queries", "analytical_queries.yaml")
@@ -74,7 +77,19 @@ def main():
     args = parser.parse_args()
     engine = create_db_connection()
     params = {"cid": CONSTRUCTOR_ID}
+    for r in TEAM_REFS:
+        if not _REF_RE.match(r):
+            raise ValueError(f"Invalid team ref (must be lowercase alphanumeric/underscore): {r!r}")
     team_refs_sql = ", ".join(f"'{r}'" for r in TEAM_REFS)
+
+    sqlite_version = None
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT sqlite_version()")).fetchone()
+        if row:
+            sqlite_version = tuple(int(x) for x in row[0].split("."))
+
+    _WINDOW_FN_QUERIES = {"championship_progression"}
+    _MIN_SQLITE_FOR_WINDOW = (3, 25, 0)
 
     queries = load_queries_from_yaml(args.file)
 
@@ -92,6 +107,12 @@ def main():
                 logger.warning("Query '%s' not found. Use --list to see available queries.", query_name)
                 continue
 
+            if query_name in _WINDOW_FN_QUERIES and sqlite_version and sqlite_version < _MIN_SQLITE_FOR_WINDOW:
+                logger.warning(
+                    "Skipping %s: requires SQLite ≥ 3.25 for window functions (found %s).",
+                    query_name, ".".join(str(x) for x in sqlite_version),
+                )
+                continue
             logger.info("Executing %s...", query_name)
             resolved = query_text.replace("{team_refs}", team_refs_sql)
             df = execute_query(engine, query_name, resolved, params=params)

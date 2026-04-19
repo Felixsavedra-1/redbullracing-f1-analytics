@@ -186,7 +186,7 @@ def qualifying_regression(
             color="#E8C99A", linewidth=2, zorder=5, label="_fit")
 
     p = ols_stats["p_value"]
-    p_str = "p < 0.001" if p < 0.001 else f"p = {p:.4f}"
+    p_str = "p < 0.001" if p < 0.001 else ("n/a" if pd.isna(p) else f"p = {p:.4f}")
     ax.text(
         0.05, 0.97,
         f"R² = {ols_stats['r2']:.3f}\n{p_str}\nn = {ols_stats['n']}",

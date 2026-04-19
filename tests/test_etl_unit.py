@@ -213,9 +213,8 @@ class TestIncrementalStagingCleanup(unittest.TestCase):
                 processed_data_path=tmp + "/",
                 mode="full_refresh",
             )
-            self.assertFalse(os.path.exists(db_path + ".bak") is False,
-                             "backup file should exist after full refresh of an existing DB")
-            self.assertTrue(os.path.exists(db_path + ".bak"))
+            self.assertTrue(os.path.exists(db_path + ".bak"),
+                            "backup file should exist after full refresh of an existing DB")
 
 
 class TestDatetimeCoercionLogging(unittest.TestCase):
@@ -230,6 +229,57 @@ class TestDatetimeCoercionLogging(unittest.TestCase):
             df = t.transform_drivers()
             self.assertEqual(len(df), 1)
             self.assertTrue(pd.isna(df["dob"].iloc[0]))
+
+
+class TestInvalidInputs(unittest.TestCase):
+    """Negative tests: bad inputs must fail loudly, never silently corrupt data."""
+
+    def test_header_only_csv_returns_empty_not_crash(self):
+        """A CSV with all required headers but no data rows produces an empty DataFrame."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "circuits.csv")
+            with open(path, "w") as f:
+                f.write("circuit_ref,circuit_name,location,country,lat,lng,altitude,url\n")
+            t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
+            df = t.transform_circuits()
+            self.assertTrue(df.empty)
+
+    def test_unmapped_ref_logs_warning_does_not_inject_zero(self):
+        """An unmapped ref must drop the row entirely — not substitute driver_id=0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            write_csv(os.path.join(tmp, "drivers.csv"),
+                      ["driver_id", "driver_ref"], [[1, "max_verstappen"]])
+            t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
+            df = pd.DataFrame({"driver_ref": ["ghost_driver"]})
+            result = t._apply_ref_map(df, "driver_ref", "driver_id", "drivers.csv")
+            self.assertTrue(result.empty)
+            if not result.empty:
+                self.assertNotIn(0, result["driver_id"].tolist())
+
+    def test_strict_schema_rejects_missing_required_column(self):
+        """Loading a DataFrame missing a required column raises ValueError in strict mode."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            loader = F1DataLoader(
+                config={"type": "sqlite", "filename": db_path},
+                processed_data_path=tmp + "/",
+                strict_schema=True,
+            )
+            bad_df = pd.DataFrame({"not_circuit_id": [1]})
+            with self.assertRaises(ValueError):
+                loader._validate_df(bad_df, "circuits")
+
+    def test_duplicate_primary_keys_in_ref_map_last_wins(self):
+        """Duplicate refs in the lookup file: last value wins (documented behaviour)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            write_csv(os.path.join(tmp, "drivers.csv"),
+                      ["driver_id", "driver_ref"],
+                      [[1, "max_verstappen"], [99, "max_verstappen"]])
+            t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
+            df = pd.DataFrame({"driver_ref": ["max_verstappen"]})
+            result = t._apply_ref_map(df, "driver_ref", "driver_id", "drivers.csv")
+            self.assertEqual(len(result), 1)
+            self.assertEqual(result["driver_id"].iloc[0], 99)
 
 
 if __name__ == "__main__":

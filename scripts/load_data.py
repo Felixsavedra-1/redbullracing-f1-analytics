@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 
 import pandas as pd
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
@@ -75,6 +75,12 @@ class F1DataLoader:
                 self.logger.info("Connecting to MySQL at %s.", self.config.get("host"))
 
             self.engine = create_engine(_build_connection_string(self.config))
+
+            if self.config.get("type") == "sqlite":
+                # Enable FK enforcement on every new connection — SQLite disables it by default.
+                @event.listens_for(self.engine, "connect")
+                def set_fk_pragma(dbapi_conn, _):
+                    dbapi_conn.execute("PRAGMA foreign_keys=ON")
 
             with self.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
@@ -242,10 +248,9 @@ class F1DataLoader:
         return df
 
     def _load_table_full_refresh(self, df: pd.DataFrame, table_name: str) -> None:
-        with self.engine.connect() as conn:
+        with self.engine.begin() as conn:
             conn.execute(text(f"DELETE FROM {self._quote(table_name)}"))
-            conn.commit()
-        df.to_sql(table_name, self.engine, if_exists="append", index=False)
+            df.to_sql(table_name, conn, if_exists="append", index=False)
 
     def _load_table_incremental(self, df: pd.DataFrame, table_name: str) -> None:
         staging_table = f"_stg_{table_name}"

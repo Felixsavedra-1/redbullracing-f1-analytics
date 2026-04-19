@@ -6,6 +6,7 @@ import unittest
 
 from scripts.transform_data import F1DataTransformer
 from scripts.load_data import F1DataLoader
+from scripts.data_quality import run_quality_checks
 
 
 def write_csv(path, headers, rows):
@@ -239,10 +240,29 @@ class TestPipelineSmoke(unittest.TestCase):
 
             with sqlite3.connect(db_path) as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT COUNT(*) FROM results")
-                count = cur.fetchone()[0]
 
-            self.assertGreater(count, 0)
+                cur.execute("SELECT COUNT(*) FROM results")
+                self.assertGreater(cur.fetchone()[0], 0, "results table must not be empty")
+
+                # No NULL primary keys — a NULL PK indicates a broken ref-map or schema issue.
+                for table, pk in [("drivers", "driver_id"), ("races", "race_id"),
+                                   ("circuits", "circuit_id"), ("constructors", "constructor_id")]:
+                    cur.execute(f"SELECT COUNT(*) FROM {table} WHERE {pk} IS NULL")
+                    self.assertEqual(cur.fetchone()[0], 0, f"{table}.{pk} must not be NULL")
+
+                # FK spot-check: every result row references a real driver.
+                cur.execute("""
+                    SELECT COUNT(*) FROM results r
+                    LEFT JOIN drivers d ON r.driver_id = d.driver_id
+                    WHERE d.driver_id IS NULL
+                """)
+                self.assertEqual(cur.fetchone()[0], 0, "results must not contain orphaned driver_id")
+
+            # Data quality gates must all pass on the minimal dataset.
+            from sqlalchemy import create_engine
+            engine = create_engine(f"sqlite:///{db_path}")
+            failures = run_quality_checks(engine, start_year=2024, end_year=2024)
+            self.assertEqual(failures, [], f"Quality checks failed: {failures}")
 
 
 if __name__ == "__main__":

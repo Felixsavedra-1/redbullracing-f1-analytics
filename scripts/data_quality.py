@@ -192,72 +192,27 @@ def run_quality_checks(
                 }
             )
 
-        try:
-            missing_results = conn.execute(
-                text(
-                    """
-                    SELECT ra.year, ra.round
-                    FROM races ra
-                    LEFT JOIN results r ON r.race_id = ra.race_id
-                    WHERE r.race_id IS NULL AND ra.year BETWEEN :start_year AND :end_year
-                    """
-                ),
-                {"start_year": start_year, "end_year": end_year},
-            ).fetchall()
-            skipped_results = _as_round_set((skipped_rounds or {}).get("results"))
-            missing_results_filtered = [
-                (row[0], row[1]) for row in missing_results if (row[0], row[1]) not in skipped_results
-            ]
-            value = len(missing_results_filtered)
-            if value != 0:
-                failures.append(
-                    {
-                        "check": "races_missing_results",
-                        "value": str(value),
-                        "expected": "0",
-                    }
-                )
-        except Exception as exc:
-            failures.append(
-                {
-                    "check": "races_missing_results",
-                    "value": f"error: {exc}",
-                    "expected": "query_success",
-                }
-            )
+        def _check_missing_data(
+            conn, join_table: str, join_col: str, check_name: str, skipped_key: str
+        ) -> None:
+            sql = f"""
+                SELECT ra.year, ra.round
+                FROM races ra
+                LEFT JOIN {join_table} t ON t.race_id = ra.race_id
+                WHERE t.{join_col} IS NULL AND ra.year BETWEEN :start_year AND :end_year
+            """
+            try:
+                rows = conn.execute(
+                    text(sql), {"start_year": start_year, "end_year": end_year}
+                ).fetchall()
+                skipped = _as_round_set((skipped_rounds or {}).get(skipped_key))
+                unaccounted = [(r[0], r[1]) for r in rows if (r[0], r[1]) not in skipped]
+                if unaccounted:
+                    failures.append({"check": check_name, "value": str(len(unaccounted)), "expected": "0"})
+            except Exception as exc:
+                failures.append({"check": check_name, "value": f"error: {exc}", "expected": "query_success"})
 
-        try:
-            missing_qualifying = conn.execute(
-                text(
-                    """
-                    SELECT ra.year, ra.round
-                    FROM races ra
-                    LEFT JOIN qualifying q ON q.race_id = ra.race_id
-                    WHERE q.race_id IS NULL AND ra.year BETWEEN :start_year AND :end_year
-                    """
-                ),
-                {"start_year": start_year, "end_year": end_year},
-            ).fetchall()
-            skipped_qualifying = _as_round_set((skipped_rounds or {}).get("qualifying"))
-            missing_qualifying_filtered = [
-                (row[0], row[1]) for row in missing_qualifying if (row[0], row[1]) not in skipped_qualifying
-            ]
-            value = len(missing_qualifying_filtered)
-            if value != 0:
-                failures.append(
-                    {
-                        "check": "races_missing_qualifying",
-                        "value": str(value),
-                        "expected": "0",
-                    }
-                )
-        except Exception as exc:
-            failures.append(
-                {
-                    "check": "races_missing_qualifying",
-                    "value": f"error: {exc}",
-                    "expected": "query_success",
-                }
-            )
+        _check_missing_data(conn, "results",   "race_id", "races_missing_results",   "results")
+        _check_missing_data(conn, "qualifying", "race_id", "races_missing_qualifying", "qualifying")
 
     return failures

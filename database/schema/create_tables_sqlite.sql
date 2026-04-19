@@ -133,6 +133,27 @@ CREATE TABLE IF NOT EXISTS status (
     status TEXT
 );
 
+-- FastF1 lap-by-lap telemetry: sector times, tyre compound, stint data.
+CREATE TABLE IF NOT EXISTS laps (
+    race_id          INTEGER NOT NULL,
+    driver_id        INTEGER NOT NULL,
+    lap_number       INTEGER NOT NULL,
+    lap_time_s       REAL,
+    sector1_s        REAL,
+    sector2_s        REAL,
+    sector3_s        REAL,
+    compound         TEXT,
+    tyre_life        INTEGER,
+    stint            INTEGER,
+    is_personal_best INTEGER DEFAULT 0,
+    pit_in           INTEGER DEFAULT 0,
+    pit_out          INTEGER DEFAULT 0,
+    track_status     TEXT,
+    PRIMARY KEY (race_id, driver_id, lap_number),
+    FOREIGN KEY (race_id)   REFERENCES races(race_id),
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_races_year ON races(year);
 CREATE INDEX IF NOT EXISTS idx_races_circuit ON races(circuit_id);
 CREATE INDEX IF NOT EXISTS idx_results_race ON results(race_id);
@@ -143,6 +164,9 @@ CREATE INDEX IF NOT EXISTS idx_pit_stops_race   ON pit_stops(race_id);
 CREATE INDEX IF NOT EXISTS idx_pit_stops_driver ON pit_stops(driver_id);
 CREATE INDEX IF NOT EXISTS idx_constructor_standings_race ON constructor_standings(race_id);
 CREATE INDEX IF NOT EXISTS idx_driver_standings_race ON driver_standings(race_id);
+CREATE INDEX IF NOT EXISTS idx_laps_race   ON laps(race_id);
+CREATE INDEX IF NOT EXISTS idx_laps_driver ON laps(driver_id);
+CREATE INDEX IF NOT EXISTS idx_laps_compound ON laps(compound);
 
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     run_id TEXT PRIMARY KEY,

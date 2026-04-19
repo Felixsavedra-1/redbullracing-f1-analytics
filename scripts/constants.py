@@ -18,6 +18,3 @@ except (ImportError, KeyError):
 TEAM_COLORS.setdefault("primary", "#C9A96E")
 TEAM_COLORS.setdefault("accent",  "#8B5E3C")
 TEAM_COLORS.setdefault("neutral", "#D4C5A9")
-
-# Ergast-specific constant kept for backward compatibility
-RED_BULL_CONSTRUCTOR_ID = 9
