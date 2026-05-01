@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 
 from load_data import _build_connection_string
 from logging_utils import setup_logging, format_table
-from constants import TEAM_NAME, TEAM_COLORS
+from constants import TEAM_NAME, TEAM_COLORS, TEAM_REFS
 from analytics import (
     teammate_delta, qualifying_race_ols,
     pit_stop_efficiency, championship_trajectory, dnf_rate_model,
@@ -24,6 +24,7 @@ from charts import (
     teammate_delta_chart, qualifying_regression,
     pit_stops_chart, reliability_chart,
 )
+from dashboard import generate_dashboard
 
 try:
     from config import DB_CONFIG
@@ -53,14 +54,20 @@ def run(export: bool = False) -> None:
     fig = chart_championship(traj, _out("championship", export), TEAM_NAME, TEAM_COLORS)
     if fig:
         plt.close(fig)
-    if export:
-        logger.info("  → %s", _out("championship", export))
+        if export:
+            logger.info("  → %s", _out("championship", export))
+    elif export:
+        logger.warning("championship chart: no data to plot")
 
     logger.info("Teammate head-to-head...")
     delta = teammate_delta(engine)
     fig = teammate_delta_chart(delta, _out("teammate_delta", export), TEAM_COLORS)
     if fig:
         plt.close(fig)
+        if export:
+            logger.info("  → %s", _out("teammate_delta", export))
+    elif export:
+        logger.warning("teammate_delta chart: no data to plot")
     if not delta.empty:
         headers = ["Pair", "Δ mean", "CI 95%", "n", "p"]
         rows = [
@@ -77,28 +84,39 @@ def run(export: bool = False) -> None:
 
     logger.info("Qualifying → race regression...")
     ols_stats, scatter = qualifying_race_ols(engine)
-    fig = qualifying_regression(scatter, ols_stats, _out("qualifying_ols", export), TEAM_COLORS)
-    if fig:
-        plt.close(fig)
-    p = ols_stats["p_value"]
-    logger.info(
-        "  R² = %.3f  slope = %.3f  p = %s  n = %d",
-        ols_stats["r2"], ols_stats["slope"],
-        "< 0.001" if p < 0.001 else f"{p:.4f}",
-        ols_stats["n"],
-    )
+    if ols_stats["slope"] is not None:
+        fig = qualifying_regression(scatter, ols_stats, _out("qualifying_ols", export), TEAM_COLORS)
+        if fig:
+            plt.close(fig)
+        p = ols_stats["p_value"]
+        logger.info(
+            "  R² = %.3f  slope = %.3f  p = %s  n = %d",
+            ols_stats["r2"], ols_stats["slope"],
+            "< 0.001" if p < 0.001 else f"{p:.4f}",
+            ols_stats["n"],
+        )
+    else:
+        logger.info("  qualifying_race_ols: insufficient data (n=%d)", ols_stats["n"])
 
     logger.info("Pit stop efficiency...")
     pit = pit_stop_efficiency(engine)
     fig = pit_stops_chart(pit, _out("pit_stop_efficiency", export), TEAM_COLORS)
     if fig:
         plt.close(fig)
+        if export:
+            logger.info("  → %s", _out("pit_stop_efficiency", export))
+    elif export:
+        logger.warning("pit_stop_efficiency chart: no data to plot")
 
     logger.info("DNF rate model...")
     dnf = dnf_rate_model(engine)
     fig = reliability_chart(dnf, _out("reliability", export), TEAM_COLORS)
     if fig:
         plt.close(fig)
+        if export:
+            logger.info("  → %s", _out("reliability", export))
+    elif export:
+        logger.warning("reliability chart: no data to plot")
     if not dnf.empty:
         headers = ["Driver", "Races", "DNFs", "Rate", "CI 95%"]
         rows = [
@@ -115,6 +133,14 @@ def run(export: bool = False) -> None:
 
     if export:
         logger.info("Charts saved to %s/", _EXPORTS)
+        logger.info("Generating dashboard...")
+        dash_path = os.path.join("data", "exports", "dashboard.html")
+        try:
+            generate_dashboard(engine, TEAM_REFS, TEAM_NAME, dash_path)
+            logger.info("  → %s", dash_path)
+        except Exception:
+            logger.exception("Dashboard generation failed.")
+            sys.exit(1)
 
 
 def main() -> None:

@@ -110,18 +110,18 @@ class TestTeammateDelta(unittest.TestCase):
         cls.engine = _make_engine()
 
     def test_returns_expected_columns(self):
-        df = teammate_delta(self.engine, constructor_id=9, min_shared_races=5)
+        df = teammate_delta(self.engine, team_refs=["red_bull"], min_shared_races=5)
         self.assertFalse(df.empty)
         for col in ("driver_a", "driver_b", "mean_delta", "ci_lower", "ci_upper", "n", "p_value"):
             self.assertIn(col, df.columns)
 
     def test_driver_a_finishes_ahead(self):
-        df = teammate_delta(self.engine, constructor_id=9, min_shared_races=5)
+        df = teammate_delta(self.engine, team_refs=["red_bull"], min_shared_races=5)
         # Driver 1 always P1, driver 2 always P2 → delta = 1-2 = -1 (negative = ahead)
         self.assertLess(df.iloc[0]["mean_delta"], 0)
 
     def test_below_min_shared_races_returns_empty(self):
-        df = teammate_delta(self.engine, constructor_id=9, min_shared_races=99)
+        df = teammate_delta(self.engine, team_refs=["red_bull"], min_shared_races=99)
         self.assertTrue(df.empty)
 
 
@@ -131,16 +131,22 @@ class TestQualifyingRaceOls(unittest.TestCase):
         cls.engine = _make_engine()
 
     def test_returns_stats_dict_and_dataframe(self):
-        stats_dict, df = qualifying_race_ols(self.engine, constructor_id=9)
+        stats_dict, df = qualifying_race_ols(self.engine, team_refs=["red_bull"])
         for key in ("slope", "intercept", "r2", "p_value", "n"):
             self.assertIn(key, stats_dict)
         self.assertIn("grid", df.columns)
         self.assertIn("finish", df.columns)
 
     def test_r2_in_unit_interval(self):
-        stats_dict, _ = qualifying_race_ols(self.engine, constructor_id=9)
+        stats_dict, _ = qualifying_race_ols(self.engine, team_refs=["red_bull"])
         self.assertGreaterEqual(stats_dict["r2"], 0.0)
         self.assertLessEqual(stats_dict["r2"], 1.0)
+
+    def test_empty_constructor_returns_none_stats(self):
+        stats_dict, df = qualifying_race_ols(self.engine, team_refs=["nonexistent"])
+        self.assertIsNone(stats_dict["slope"])
+        self.assertEqual(stats_dict["n"], 0)
+        self.assertTrue(df.empty)
 
 
 class TestPitStopEfficiency(unittest.TestCase):
@@ -212,7 +218,7 @@ class TestTyreDegradationAndSectorDeltas(unittest.TestCase):
             self.assertIn(col, df.columns)
 
     def test_sector_deltas_empty_returns_empty(self):
-        df = sector_deltas(self.engine, constructor_id=9)
+        df = sector_deltas(self.engine, team_refs=["red_bull"])
         self.assertTrue(df.empty)
 
 

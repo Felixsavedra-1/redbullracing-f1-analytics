@@ -96,7 +96,6 @@ CREATE TABLE results (
     fastest_lap_rank INT,
     fastest_lap_time VARCHAR(20),
     fastest_lap_speed VARCHAR(20),
-    status_id INT,
     status VARCHAR(50),
     UNIQUE KEY uq_results_race_driver_constructor (race_id, driver_id, constructor_id),
     FOREIGN KEY (race_id) REFERENCES races(race_id),
@@ -147,10 +146,25 @@ CREATE TABLE driver_standings (
     FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
 );
 
--- 11. STATUS TABLE (for DNF reasons, etc.)
-CREATE TABLE status (
-    status_id INT PRIMARY KEY,
-    status VARCHAR(50)
+-- 11. LAPS TABLE (FastF1 lap-by-lap telemetry: sector times, tyre compound, stint data)
+CREATE TABLE laps (
+    race_id          INT NOT NULL,
+    driver_id        INT NOT NULL,
+    lap_number       INT NOT NULL,
+    lap_time_s       DECIMAL(10, 6),
+    sector1_s        DECIMAL(10, 6),
+    sector2_s        DECIMAL(10, 6),
+    sector3_s        DECIMAL(10, 6),
+    compound         VARCHAR(20),
+    tyre_life        INT,
+    stint            INT,
+    is_personal_best TINYINT DEFAULT 0,
+    pit_in           TINYINT DEFAULT 0,
+    pit_out          TINYINT DEFAULT 0,
+    track_status     VARCHAR(10),
+    PRIMARY KEY (race_id, driver_id, lap_number),
+    FOREIGN KEY (race_id)   REFERENCES races(race_id),
+    FOREIGN KEY (driver_id) REFERENCES drivers(driver_id)
 );
 
 -- Pipeline metadata
@@ -181,31 +195,12 @@ CREATE INDEX idx_qualifying_driver ON qualifying(driver_id);
 CREATE INDEX idx_pit_stops_race ON pit_stops(race_id);
 CREATE INDEX idx_constructor_standings_race ON constructor_standings(race_id);
 CREATE INDEX idx_driver_standings_race ON driver_standings(race_id);
+CREATE INDEX idx_laps_race     ON laps(race_id);
+CREATE INDEX idx_laps_driver   ON laps(driver_id);
+CREATE INDEX idx_laps_compound ON laps(compound);
 
 -- Insert Red Bull Racing constructor data
 INSERT INTO constructors (constructor_id, constructor_ref, constructor_name, nationality, url)
 VALUES (9, 'red_bull', 'Red Bull', 'Austrian', 'http://en.wikipedia.org/wiki/Red_Bull_Racing')
 ON DUPLICATE KEY UPDATE constructor_name = constructor_name;
 
--- Insert some common status types
-INSERT INTO status (status_id, status) VALUES
-(1, 'Finished'),
-(2, 'Disqualified'),
-(3, 'Accident'),
-(4, 'Collision'),
-(5, 'Engine'),
-(6, 'Gearbox'),
-(7, 'Transmission'),
-(8, 'Clutch'),
-(9, 'Hydraulics'),
-(10, 'Electrical'),
-(11, '+1 Lap'),
-(12, '+2 Laps'),
-(13, '+3 Laps'),
-(14, 'Retired'),
-(15, 'Did not qualify'),
-(16, 'Spun off'),
-(17, 'Wheel'),
-(18, 'Brakes'),
-(19, 'Suspension')
-ON DUPLICATE KEY UPDATE status = status;

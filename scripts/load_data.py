@@ -87,6 +87,8 @@ class F1DataLoader:
 
             if self.config.get("type") == "sqlite":
                 self._apply_sqlite_schema()
+                if self.mode == "incremental":
+                    self._check_schema_drift()
 
             self.logger.info("Database connection established.")
 
@@ -111,6 +113,32 @@ class F1DataLoader:
                 if stmt:
                     conn.execute(text(stmt))
             conn.commit()
+
+    def _check_schema_drift(self) -> None:
+        with self.engine.connect() as conn:
+            for table_name, _, cols, _, _ in self._TABLE_SPECS:
+                exists = conn.execute(
+                    text("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=:t"),
+                    {"t": table_name},
+                ).fetchone()[0]
+                if not exists:
+                    self.logger.warning(
+                        "Schema drift: table '%s' is missing. Run without --incremental to recreate.",
+                        table_name,
+                    )
+                    continue
+                if not cols:
+                    continue
+                existing_cols = {
+                    row[1]
+                    for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+                }
+                missing = [c for c in cols if c not in existing_cols]
+                if missing:
+                    self.logger.warning(
+                        "Schema drift: '%s' is missing columns %s. Run without --incremental to apply changes.",
+                        table_name, missing,
+                    )
 
     def _ensure_metadata_tables(self) -> None:
         if self.config.get("type") == "sqlite":

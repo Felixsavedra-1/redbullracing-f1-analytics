@@ -1,11 +1,10 @@
 # Copy this file to config.py. Do not commit config.py to version control.
 
 # --- Team ---
-# constructor_id: Ergast constructor ID for the primary team (used in parameterized queries)
-# family_refs:    All constructor_ref values in the team family (used in family-wide queries)
-# name:           Display name shown in terminal output
+# family_refs: All constructor_ref values in the team family (must match values in the
+#              constructors table — check with: SELECT constructor_ref FROM constructors)
+# name:        Display name shown in terminal output
 TEAM_CONFIG = {
-    "constructor_id": 9,
     "family_refs": ["red_bull", "alphatauri", "rb"],
     "name": "Red Bull",
     "colors": {

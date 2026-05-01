@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import re
 import sys
 
 import pandas as pd
@@ -35,7 +34,7 @@ def _load_skipped(name: str) -> dict:
 
 _DRIVER_SUMMARY_SQL = """
 SELECT
-    d.forename || ' ' || d.surname AS driver,
+    COALESCE(d.forename, '') || ' ' || COALESCE(d.surname, '') AS driver,
     GROUP_CONCAT(DISTINCT con.constructor_name) AS team,
     COUNT(*) AS races,
     SUM(res.points) AS points,
@@ -73,18 +72,14 @@ def _shorten_teams(raw: str) -> str:
     return " · ".join(unique)
 
 
-_REF_RE = re.compile(r'^[a-z0-9_]+$')
-
-
 def _print_driver_summary(engine) -> None:
+    logger = setup_logging()
     try:
-        for r in TEAM_REFS:
-            if not _REF_RE.match(r):
-                raise ValueError(f"Invalid team ref: {r!r}")
-        refs_sql = ", ".join(f"'{r}'" for r in TEAM_REFS)
-        sql = _DRIVER_SUMMARY_SQL.format(team_refs=refs_sql)
+        placeholders = ", ".join(f":r{i}" for i in range(len(TEAM_REFS)))
+        params = {f"r{i}": r for i, r in enumerate(TEAM_REFS)}
+        sql = _DRIVER_SUMMARY_SQL.format(team_refs=placeholders)
         with engine.connect() as conn:
-            df = pd.read_sql(text(sql), conn)
+            df = pd.read_sql(text(sql), conn, params=params)
         if df.empty:
             return
 
@@ -93,6 +88,7 @@ def _print_driver_summary(engine) -> None:
             lambda r: f"{int(r.from_yr)}–{int(r.to_yr) % 100:02d}", axis=1
         )
         df["points"] = df["points"].astype(int)
+        year_range = f"{int(df['from_yr'].min())}–{int(df['to_yr'].max())}" if not df.empty else ""
         df = df[["driver", "team", "period", "races", "points",
                  "wins", "podiums", "avg_finish", "dnfs"]]
 
@@ -102,13 +98,12 @@ def _print_driver_summary(engine) -> None:
 
         rule = "─" * 70
         print(f"\n{rule}")
-        year_range = f"{df['from_yr'].min():.0f}–{df['to_yr'].max():.0f}" if not df.empty else ""
         print(f"  {TEAM_NAME} Drivers  {year_range}")
         print(rule)
         print(format_table(headers, rows, right_cols))
         print(f"{rule}\n")
-    except Exception:
-        pass  # summary is informational; never block the pipeline
+    except Exception as e:
+        logger.debug("driver summary skipped: %s", e)
 
 
 def _normalize_year_range(start_year: int, end_year: int) -> tuple[int, int, bool]:
@@ -122,6 +117,29 @@ def _normalize_year_range(start_year: int, end_year: int) -> tuple[int, int, boo
     return start_year, end_year, clamped
 
 
+def _dry_run_preview() -> None:
+    logger = setup_logging()
+    logger.info("DRY RUN — extract and transform complete. Would load:")
+    headers = ["Table", "Rows", "Status"]
+    rows = []
+    for table_name, csv_name, *_ in F1DataLoader._TABLE_SPECS:
+        if csv_name.startswith("raw:"):
+            path = os.path.join("data", "raw", csv_name[4:])
+        else:
+            path = os.path.join("data", "processed", csv_name)
+        if not os.path.exists(path):
+            rows.append([table_name, "—", "missing"])
+            continue
+        try:
+            with open(path) as fh:
+                count = max(0, sum(1 for _ in fh) - 1)
+            rows.append([table_name, str(count), "ready"])
+        except OSError:
+            rows.append([table_name, "—", "error"])
+    print(format_table(headers, rows, {1}))
+    logger.info("Re-run without --dry-run to load the above into the database.")
+
+
 def run_full_pipeline(
     start_year: int = DEFAULT_START_YEAR,
     end_year: int = DEFAULT_END_YEAR,
@@ -131,6 +149,7 @@ def run_full_pipeline(
     skip_pit_stops: bool = False,
     skip_quality: bool = False,
     include_telemetry: bool = False,
+    dry_run: bool = False,
     mode: str = "full_refresh",
     strict_schema: bool = True,
     base_delay: float = 1.5,
@@ -181,6 +200,10 @@ def run_full_pipeline(
     else:
         logger.info("[2/3] SKIPPING TRANSFORMATION (--skip-transform flag)")
 
+    if dry_run:
+        _dry_run_preview()
+        return
+
     if not skip_load:
         logger.info("[3/3] LOADING DATA INTO DATABASE")
         loader = F1DataLoader(
@@ -205,11 +228,8 @@ def run_full_pipeline(
                 skipped_rounds=skipped_rounds,
             )
             if failures:
-                fail_on_quality = os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true"
-                if fail_on_quality:
-                    logger.error("Data quality checks failed: %s", failures)
-                    raise RuntimeError("Data quality checks failed")
-                logger.warning("Data quality checks had warnings: %s", failures)
+                logger.error("Data quality checks failed: %s", failures)
+                raise RuntimeError("Data quality checks failed")
             else:
                 logger.info("Data quality checks passed")
     else:
@@ -283,6 +303,11 @@ Examples:
         action="store_true",
         help="Run a faster demo extraction (2021–2025, reduced retries/backoff)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Extract and transform data but skip database load — prints row counts per table",
+    )
 
     args = parser.parse_args()
 
@@ -306,6 +331,7 @@ Examples:
             skip_pit_stops=args.skip_pit_stops,
             skip_quality=args.skip_quality,
             include_telemetry=args.telemetry,
+            dry_run=args.dry_run,
             mode=mode,
             strict_schema=strict_schema,
             base_delay=args.base_delay,

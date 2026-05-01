@@ -57,11 +57,12 @@ python scripts/run_pipeline.py --base-delay 2.0 --max-retries 8
 
 ## Analysis
 
-Five statistical models on the loaded database. Prints summary tables; `--export` saves 300 DPI PNGs to `data/exports/charts/`.
+Five statistical models on the loaded database. Prints summary tables; `--export` saves 300 DPI PNGs and an interactive HTML dashboard to `data/exports/`.
 
 ```bash
 python scripts/run_analysis.py
 python scripts/run_analysis.py --export
+open data/exports/dashboard.html
 ```
 
 | Model | Method |
@@ -71,6 +72,16 @@ python scripts/run_analysis.py --export
 | Grid → finish regression | OLS with R², slope, and significance |
 | Pit stop efficiency | Z-score vs season field distribution |
 | DNF rate | Poisson MLE with exact 95% confidence intervals |
+
+---
+
+## Dashboard
+
+`--export` generates a self-contained `data/exports/dashboard.html` — no server required, open directly in a browser.
+
+![Dashboard](docs/dashboard.png)
+
+Three interactive Plotly charts (hover for lap-by-lap detail, scroll to zoom): championship trajectory, race finish positions, and grid vs finish. Three.js F1 cars rendered per constructor — Red Bull in red/blue, AlphaTauri in white/red, RB in white/blue.
 
 ---
 
@@ -134,6 +145,8 @@ Post-load quality gates (15+ checks) run automatically at the end of each pipeli
 │   └── schema/            # DDL for SQLite and MySQL
 ├── notebooks/
 ├── powerbi/
+├── docs/
+│   └── dashboard.png      # dashboard screenshot
 ├── scripts/
 │   ├── run_pipeline.py    # main entry point
 │   ├── extract_data.py
@@ -141,6 +154,7 @@ Post-load quality gates (15+ checks) run automatically at the end of each pipeli
 │   ├── load_data.py
 │   ├── run_queries.py
 │   ├── analytics.py
+│   ├── dashboard.py       # interactive HTML dashboard
 │   └── schema_contracts.py
 └── tests/
 ```

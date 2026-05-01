@@ -202,9 +202,13 @@ class F1DataTransformer:
         else:
             df["position_text"] = ""
 
-        for col in ["points", "laps", "grid", "number", "fastest_lap", "fastest_lap_rank"]:
+        for col in ["points", "laps", "number", "fastest_lap", "fastest_lap_rank"]:
             if col in df.columns:
                 df[col] = df[col].fillna(0).astype(int)
+
+        # grid=0 is a valid F1 value (pit-lane start); preserve NULL for missing data.
+        if "grid" in df.columns:
+            df["grid"] = pd.to_numeric(df["grid"], errors="coerce")
 
         if "fastest_lap_speed" in df.columns:
             df["fastest_lap_speed"] = df["fastest_lap_speed"].fillna("").astype(str)

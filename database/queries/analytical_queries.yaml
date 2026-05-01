@@ -1,6 +1,9 @@
 # Oracle Red Bull Racing F1 Performance Analysis Queries
-# All queries accept :cid as a bind parameter for the constructor ID.
-# driver_summary covers the full Red Bull family (main team + AlphaTauri/RB).
+# Most queries accept :cid as a bind parameter for the constructor ID.
+# driver_summary uses {team_refs} — a Python format placeholder replaced with :r0,:r1,...
+#   bind params by the calling code (run_pipeline.py, run_queries.py). Never pass raw strings.
+# DNF sentinel: 999 = constants.DNF_POSITION_ORDER — if that constant changes, update every
+#   occurrence of 999 in this file too (position_order comparisons in WHERE/CASE expressions).
 
 driver_summary: |
   SELECT
@@ -140,7 +143,8 @@ championship_progression: |
       cs.points                                                                  AS points_accumulated,
       cs.wins                                                                    AS wins_accumulated,
       LAG(cs.points) OVER (PARTITION BY r.year ORDER BY r.round)                AS prev_points,
-      cs.points - LAG(cs.points) OVER (PARTITION BY r.year ORDER BY r.round)    AS points_gained
+      COALESCE(cs.points - LAG(cs.points) OVER (PARTITION BY r.year ORDER BY r.round),
+               cs.points)                                                         AS points_gained
   FROM constructor_standings cs
   JOIN races r ON cs.race_id = r.race_id
   WHERE cs.constructor_id = :cid

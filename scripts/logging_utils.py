@@ -32,8 +32,13 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
 def format_table(headers: List[str], rows: list, right_cols: Set[int] = None) -> str:
     """Return a fixed-width text table. right_cols is a set of column indices to right-align."""
     right_cols = right_cols or set()
-    all_rows = [headers] + [[str(v) for v in row] for row in rows]
-    widths = [max(len(r[i]) for r in all_rows) for i in range(len(headers))]
+    ncols = len(headers)
+    str_rows = [
+        [str(v) for v in row] + [""] * max(0, ncols - len(row))
+        for row in rows
+    ]
+    all_rows = [headers] + str_rows
+    widths = [max(len(r[i]) for r in all_rows) for i in range(ncols)]
 
     def fmt(row: list) -> str:
         cells = [

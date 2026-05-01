@@ -520,7 +520,11 @@ class F1DataExtractor:
                 if candidate == legacy_path and not os.path.exists(path):
                     self._save_progress(filename, normalized, start_year, end_year)
                 return normalized
-            except (OSError, json.JSONDecodeError, ValueError):
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                self.logger.warning(
+                    "Progress file %s is corrupt or unreadable (%s); re-extracting from scratch.",
+                    candidate, exc,
+                )
                 return {"years": {}, "skipped": {}}
         return {"years": {}, "skipped": {}}
 
