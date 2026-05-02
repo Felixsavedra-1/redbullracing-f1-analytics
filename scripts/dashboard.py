@@ -17,126 +17,17 @@ from analytics import _ref_params, championship_trajectory
 
 logger = logging.getLogger("f1_analytics")
 
-_BG      = "#0d0d0d"
-_PLOT_BG = "#111111"
-_FONT    = "Courier New, monospace"
-_GRID    = "#252525"
-_TICK    = "#aaaaaa"
+_BG   = "#000000"
+_FONT = "Courier New, monospace"
+_GRID    = "#1e1e1e"
+_TICK    = "#888888"
+_RED     = "#E8002D"
 
 _DRIVER_COLORS = [
-    "#E8002D", "#3399FF", "#FF6B00", "#00DDFF",
-    "#FFD700", "#CC44FF", "#00FF88", "#FF44AA",
+    "#3399FF", "#FF6B00", "#00DDFF", "#FFD700",
+    "#CC44FF", "#00FF88", "#FF44AA", "#FFFFFF",
 ]
 
-# One car per Red Bull family team — body/accent drives the Three.js material colors
-_TEAM_CARS = [
-    {"name": "ORACLE RED BULL RACING", "body": "#E8002D", "accent": "#1E3A8A"},
-    {"name": "SCUDERIA ALPHATAURI",    "body": "#E0E0E8", "accent": "#E8002D"},
-    {"name": "VISA CASH APP RB",       "body": "#E0E0E8", "accent": "#0044CC"},
-]
-
-# --------------------------------------------------------------------------- #
-#  Three.js car builder (embedded JS)                                          #
-# --------------------------------------------------------------------------- #
-
-_CAR_JS = """
-function _h(hex) { return parseInt(hex.replace('#',''), 16); }
-
-function buildF1Car(bodyHex, accentHex) {
-  var B = _h(bodyHex), A = _h(accentHex), D = 0x111111, C = 0x222222;
-  var g = new THREE.Group();
-
-  function mat(c, s) {
-    return new THREE.MeshPhongMaterial({color: c, shininess: s || 90});
-  }
-  function box(w, h, d, x, y, z, c, s) {
-    var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, s));
-    m.position.set(x, y, z);
-    g.add(m);
-  }
-
-  // Monocoque
-  box(2.05, 0.27, 0.66,  0.00, 0.22,  0.00, B);
-  // Engine cover
-  box(0.70, 0.40, 0.58,  0.54, 0.37,  0.00, B);
-  // Nose box
-  box(0.88, 0.16, 0.40, -1.30, 0.20,  0.00, B);
-  // Cockpit (accent colour)
-  box(0.40, 0.25, 0.50,  0.02, 0.39,  0.00, A, 130);
-  // Underfloor
-  box(2.05, 0.04, 0.86,  0.00, 0.07,  0.00, D);
-  // Sidepods
-  box(0.88, 0.21, 0.25,  0.08, 0.17,  0.48, B);
-  box(0.88, 0.21, 0.25,  0.08, 0.17, -0.48, B);
-
-  // Nose cone tip
-  var nc = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.55, 8), mat(B));
-  nc.rotation.z = -Math.PI / 2;
-  nc.position.set(-1.97, 0.18, 0);
-  g.add(nc);
-
-  // Front wing
-  box(0.15, 0.03, 1.65, -1.70, 0.06,  0.00, A, 130);
-  box(0.22, 0.13, 0.04, -1.65, 0.08,  0.82, C);
-  box(0.22, 0.13, 0.04, -1.65, 0.08, -0.82, C);
-
-  // Rear wing
-  box(0.15, 0.03, 1.10,  1.04, 0.77,  0.00, A, 130);
-  box(0.15, 0.03, 1.10,  1.04, 0.69,  0.00, B);
-  box(0.09, 0.50, 0.04,  1.04, 0.51,  0.55, C);
-  box(0.09, 0.50, 0.04,  1.04, 0.51, -0.55, C);
-
-  // Wheels
-  var wGeo = new THREE.CylinderGeometry(0.23, 0.23, 0.27, 20);
-  var rGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.28,  6);
-  [[-0.94, 0, 0.60], [-0.94, 0, -0.60],
-   [ 0.82, 0, 0.60], [ 0.82, 0, -0.60]].forEach(function(p) {
-    var w = new THREE.Mesh(wGeo, mat(0x111111, 30));
-    w.rotation.x = Math.PI / 2;
-    w.position.set(p[0], p[1], p[2]);
-    g.add(w);
-    var r = new THREE.Mesh(rGeo, mat(A, 160));
-    r.rotation.x = Math.PI / 2;
-    r.position.set(p[0], p[1], p[2] > 0 ? p[2] + 0.01 : p[2] - 0.01);
-    g.add(r);
-  });
-
-  return g;
-}
-
-function initCar(canvasId, bodyHex, accentHex) {
-  var canvas = document.getElementById(canvasId);
-  if (!canvas || typeof THREE === 'undefined') return;
-  var W = canvas.parentElement.offsetWidth || 340;
-  var H = 160;
-  canvas.width  = W;
-  canvas.height = H;
-  var renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true, alpha: true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(W, H);
-  var scene  = new THREE.Scene();
-  var camera = new THREE.PerspectiveCamera(36, W / H, 0.1, 50);
-  camera.position.set(0, 1.5, 6.0);
-  camera.lookAt(0, 0.25, 0);
-  scene.add(new THREE.AmbientLight(0x404060, 2.5));
-  var key = new THREE.DirectionalLight(0xffffff, 5.0);
-  key.position.set(4, 6, 4);
-  scene.add(key);
-  var fill = new THREE.DirectionalLight(0x6688cc, 1.8);
-  fill.position.set(-3, 2, -2);
-  scene.add(fill);
-  var car = buildF1Car(bodyHex, accentHex);
-  scene.add(car);
-  var t = 0;
-  (function loop() {
-    requestAnimationFrame(loop);
-    t += 0.012;
-    car.rotation.y = Math.sin(t * 0.55) * 0.35;
-    car.position.y = Math.sin(t * 0.9) * 0.07;
-    renderer.render(scene, camera);
-  })();
-}
-"""
 
 # --------------------------------------------------------------------------- #
 #  HTML template                                                                #
@@ -149,21 +40,16 @@ _HTML_TEMPLATE = """\
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PLACEHOLDER_TITLE</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0d0d0d;color:#fff;font-family:'Courier New',monospace}
-header{padding:32px 32px 12px;border-bottom:1px solid #1c1c1c;margin-bottom:28px}
-h1{letter-spacing:.25em;font-size:1.05rem;text-transform:uppercase}
-.sub{color:#777;letter-spacing:.12em;font-size:.68rem;margin-top:6px}
-.cars{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;padding:0 24px 8px}
-.car-col{display:flex;flex-direction:column;align-items:center;padding:0 8px}
-canvas.car{display:block;width:100%;height:160px}
-.car-label{font-size:.58rem;letter-spacing:.18em;color:#555;text-transform:uppercase;
-  padding:8px 0 20px;text-align:center}
-.charts{display:grid;grid-template-columns:1fr;gap:20px;padding:0 24px 40px}
-.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:860px){.chart-row,.cars{grid-template-columns:1fr}}
+body{background:#000;color:#fff;font-family:'Courier New',monospace}
+header{padding:40px 32px 32px;border-bottom:3px solid #E8002D}
+h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em}
+.sub{color:#666;font-size:.7rem;letter-spacing:.15em;margin-top:8px;text-transform:uppercase}
+.charts{padding:32px;display:grid;grid-template-columns:1fr;gap:32px}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+.chart-section{border-top:1px solid #E8002D;padding-top:16px}
+@media(max-width:860px){.chart-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -171,35 +57,13 @@ canvas.car{display:block;width:100%;height:160px}
   <h1>PLACEHOLDER_HEADING</h1>
   <p class="sub">PLACEHOLDER_SUBTITLE</p>
 </header>
-<div class="cars">
-  <div class="car-col">
-    <canvas id="car1" class="car"></canvas>
-    <div class="car-label">ORACLE RED BULL RACING</div>
-  </div>
-  <div class="car-col">
-    <canvas id="car2" class="car"></canvas>
-    <div class="car-label">SCUDERIA ALPHATAURI</div>
-  </div>
-  <div class="car-col">
-    <canvas id="car3" class="car"></canvas>
-    <div class="car-label">VISA CASH APP RB</div>
-  </div>
-</div>
 <div class="charts">
-  <div id="c1">PLACEHOLDER_C1</div>
+  <div class="chart-section">PLACEHOLDER_C1</div>
   <div class="chart-row">
-    <div id="c2">PLACEHOLDER_C2</div>
-    <div id="c3">PLACEHOLDER_C3</div>
+    <div class="chart-section">PLACEHOLDER_C2</div>
+    <div class="chart-section">PLACEHOLDER_C3</div>
   </div>
 </div>
-<script>
-PLACEHOLDER_CAR_JS
-window.addEventListener('load',function(){
-  initCar('car1','PLACEHOLDER_CAR1_BODY','PLACEHOLDER_CAR1_ACCENT');
-  initCar('car2','PLACEHOLDER_CAR2_BODY','PLACEHOLDER_CAR2_ACCENT');
-  initCar('car3','PLACEHOLDER_CAR3_BODY','PLACEHOLDER_CAR3_ACCENT');
-});
-</script>
 </body>
 </html>
 """
@@ -210,12 +74,15 @@ window.addEventListener('load',function(){
 
 def _axis_2d(title: str = "") -> dict:
     return dict(
-        title=dict(text=title, font=dict(color="#cccccc", family=_FONT, size=10)),
+        title=dict(text=title, font=dict(color="#888888", family=_FONT, size=10)),
         gridcolor=_GRID,
-        zerolinecolor="#333333",
+        zerolinecolor=_GRID,
         tickfont=dict(color=_TICK, family=_FONT, size=10),
-        linecolor="#2a2a2a",
+        linecolor=_RED,
+        linewidth=2,
+        showline=True,
         showgrid=True,
+        mirror=False,
     )
 
 
@@ -224,13 +91,13 @@ def _layout_2d(title: str, xaxis_title: str = "", yaxis_title: str = "",
     return go.Layout(
         title=dict(
             text=title,
-            font=dict(color="#ffffff", family=_FONT, size=13),
-            x=0.5,
-            xanchor="center",
-            pad=dict(t=6),
+            font=dict(color="#ffffff", family=_FONT, size=14),
+            x=0,
+            xanchor="left",
+            pad=dict(t=4, l=0),
         ),
         paper_bgcolor=_BG,
-        plot_bgcolor=_PLOT_BG,
+        plot_bgcolor=_BG,
         xaxis=_axis_2d(xaxis_title),
         yaxis=_axis_2d(yaxis_title),
         font=dict(family=_FONT, color="#ffffff"),
@@ -238,15 +105,15 @@ def _layout_2d(title: str, xaxis_title: str = "", yaxis_title: str = "",
         height=height,
         showlegend=True,
         legend=dict(
-            font=dict(family=_FONT, color="#bbbbbb", size=10),
-            bgcolor="rgba(13,13,13,0.85)",
-            bordercolor="#2a2a2a",
+            font=dict(family=_FONT, color="#888888", size=10),
+            bgcolor="rgba(0,0,0,0)",
+            bordercolor=_RED,
             borderwidth=1,
         ),
         hovermode=hovermode,
         hoverlabel=dict(
-            bgcolor="#1a1a1a",
-            bordercolor="#3a3a3a",
+            bgcolor="#000000",
+            bordercolor=_RED,
             font=dict(family=_FONT, size=11, color="#ffffff"),
             namelength=-1,
         ),
@@ -302,7 +169,7 @@ def chart_championship_2d(traj_df: pd.DataFrame) -> go.Figure:
             mode="lines+markers",
             name=driver.split()[-1],
             line=dict(color=color, width=2.5),
-            marker=dict(size=5, color=color, line=dict(color="#0d0d0d", width=1)),
+            marker=dict(size=5, color=color, line=dict(color="#000000", width=1)),
             hovertemplate="<b>%{fullData.name}</b>  %{y} pts<extra></extra>",
         ))
     return fig
@@ -334,7 +201,7 @@ def chart_race_positions_2d(traj_df: pd.DataFrame) -> go.Figure:
             mode="lines+markers",
             name=driver.split()[-1],
             line=dict(color=color, width=1.8),
-            marker=dict(size=6, color=color, line=dict(color="#0d0d0d", width=1)),
+            marker=dict(size=6, color=color, line=dict(color="#000000", width=1)),
             hovertemplate="<b>%{fullData.name}</b>  P%{y}<extra></extra>",
         ))
     return fig
@@ -360,7 +227,7 @@ def chart_grid_finish_2d(df: pd.DataFrame) -> go.Figure:
         x=[1, mx], y=[1, mx],
         mode="lines",
         name="no change",
-        line=dict(color="#444444", width=1, dash="dot"),
+        line=dict(color=_RED, width=1, dash="dot"),
         showlegend=False,
         hoverinfo="skip",
     ))
@@ -375,7 +242,7 @@ def chart_grid_finish_2d(df: pd.DataFrame) -> go.Figure:
             customdata=list(zip(g["year"], delta)),
             marker=dict(
                 size=6, color=color, opacity=0.80,
-                line=dict(color="#0d0d0d", width=0.8),
+                line=dict(color="#000000", width=0.5),
             ),
             hovertemplate=(
                 "<b>%{fullData.name}</b>  %{customdata[0]}<br>"
@@ -416,22 +283,14 @@ def generate_dashboard(
     year_range = f"{years[0]}–{years[-1]}" if years else ""
     subtitle = f"PERFORMANCE DASHBOARD \xb7 {year_range}" if year_range else "PERFORMANCE DASHBOARD"
 
-    c = _TEAM_CARS
     html = (
         _HTML_TEMPLATE
-        .replace("PLACEHOLDER_TITLE",       f"{team_name} — F1 ANALYTICS")
-        .replace("PLACEHOLDER_HEADING",     f"{team_name} — F1 ANALYTICS")
-        .replace("PLACEHOLDER_SUBTITLE",    subtitle)
-        .replace("PLACEHOLDER_C1",          div1)
-        .replace("PLACEHOLDER_C2",          div2)
-        .replace("PLACEHOLDER_C3",          div3)
-        .replace("PLACEHOLDER_CAR_JS",      _CAR_JS)
-        .replace("PLACEHOLDER_CAR1_BODY",   c[0]["body"])
-        .replace("PLACEHOLDER_CAR1_ACCENT", c[0]["accent"])
-        .replace("PLACEHOLDER_CAR2_BODY",   c[1]["body"])
-        .replace("PLACEHOLDER_CAR2_ACCENT", c[1]["accent"])
-        .replace("PLACEHOLDER_CAR3_BODY",   c[2]["body"])
-        .replace("PLACEHOLDER_CAR3_ACCENT", c[2]["accent"])
+        .replace("PLACEHOLDER_TITLE",    f"{team_name} — F1 ANALYTICS")
+        .replace("PLACEHOLDER_HEADING",  f"{team_name} — F1 ANALYTICS")
+        .replace("PLACEHOLDER_SUBTITLE", subtitle)
+        .replace("PLACEHOLDER_C1",       div1)
+        .replace("PLACEHOLDER_C2",       div2)
+        .replace("PLACEHOLDER_C3",       div3)
     )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
