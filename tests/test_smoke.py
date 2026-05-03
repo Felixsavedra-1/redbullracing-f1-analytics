@@ -3,6 +3,8 @@ import sqlite3
 import tempfile
 import unittest
 
+from sqlalchemy import create_engine
+
 from scripts.transform_data import F1DataTransformer
 from scripts.load_data import F1DataLoader
 from scripts.data_quality import run_quality_checks
@@ -251,7 +253,6 @@ class TestPipelineSmoke(unittest.TestCase):
                 self.assertEqual(cur.fetchone()[0], 0, "results must not contain orphaned driver_id")
 
             # Data quality gates must all pass on the minimal dataset.
-            from sqlalchemy import create_engine
             engine = create_engine(f"sqlite:///{db_path}")
             failures = run_quality_checks(engine, start_year=2024, end_year=2024)
             self.assertEqual(failures, [], f"Quality checks failed: {failures}")

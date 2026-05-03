@@ -36,4 +36,3 @@ DATA_PATHS = {
     "raw_data": "data/raw/",
     "processed_data": "data/processed/",
 }
-

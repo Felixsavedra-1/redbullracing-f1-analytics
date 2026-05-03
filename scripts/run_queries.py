@@ -65,7 +65,7 @@ def load_queries_from_yaml(
         return yaml.safe_load(fh) or {}
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Run F1 analytical queries")
     parser.add_argument("--query", type=str, help='Query name to execute (or "all" for all queries)')
     parser.add_argument("--export", action="store_true", help="Export results to CSV")

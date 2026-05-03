@@ -132,7 +132,7 @@ def pit_stop_efficiency(
         GROUP BY ra.year
     )
     SELECT
-        da.forename || ' ' || da.surname AS driver,
+        COALESCE(da.forename, '') || ' ' || COALESCE(da.surname, '') AS driver,
         (p.milliseconds - ss.mu) / NULLIF(ss.sigma, 0) AS z
     FROM pit_stops p
     JOIN races ra         ON p.race_id          = ra.race_id

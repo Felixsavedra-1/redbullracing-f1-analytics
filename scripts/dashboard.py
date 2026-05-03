@@ -84,14 +84,18 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
   var scene=new THREE.Scene();
   var cam=new THREE.PerspectiveCamera(35,W/H,0.1,100);
   cam.position.set(5.5,2.4,4.8); cam.lookAt(0,0.1,0);
-  scene.add(new THREE.AmbientLight(0xffffff,0.48));
+  scene.add(new THREE.AmbientLight(0xffffff,0.45));
   var s1=new THREE.DirectionalLight(0xffffff,1.0); s1.position.set(6,12,5); scene.add(s1);
-  var s2=new THREE.DirectionalLight(0x7799cc,0.3); s2.position.set(-5,3,-3); scene.add(s2);
+  var s2=new THREE.DirectionalLight(0x7799cc,0.30); s2.position.set(-5,3,-3); scene.add(s2);
   var s3=new THREE.DirectionalLight(0xffffff,0.15); s3.position.set(0,1,-8); scene.add(s3);
+  var s4=new THREE.DirectionalLight(0x1122bb,0.30); s4.position.set(-4,-1,-5); scene.add(s4);
   var gnd=new THREE.Mesh(new THREE.PlaneGeometry(18,14),
     new THREE.MeshPhongMaterial({color:0x060606,specular:0x0d0d0d,shininess:20}));
   gnd.rotation.x=-Math.PI/2; gnd.position.y=-0.57; scene.add(gnd);
-  var mW=new THREE.MeshPhongMaterial({color:0xE3E3E3,specular:0xaaaaaa,shininess:90});
+  // Materials — Red Bull RB livery
+  var mNav=new THREE.MeshPhongMaterial({color:0x0D1B8C,specular:0x2244bb,shininess:80});
+  var mRed=new THREE.MeshPhongMaterial({color:0xCC0000,specular:0xff4444,shininess:70});
+  var mGold=new THREE.MeshPhongMaterial({color:0xC9A85C,specular:0xddcc88,shininess:55});
   var mC=new THREE.MeshPhongMaterial({color:0x141414,specular:0x2a2a2a,shininess:40});
   var mT=new THREE.MeshPhongMaterial({color:0x060606,shininess:5});
   var mR=new THREE.MeshPhongMaterial({color:0x333333,specular:0xdddddd,shininess:160});
@@ -104,35 +108,38 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
   }
   function bx(w,h,d,mat,x,y,z,rx,ry,rz){return mk(new THREE.BoxGeometry(w,h,d),mat,x,y,z,rx,ry,rz);}
   function cy(r1,r2,h,s,mat,x,y,z,rx,ry,rz){return mk(new THREE.CylinderGeometry(r1,r2,h,s),mat,x,y,z,rx,ry,rz);}
-  function bar(ax,ay,az,bx_,by,bz,r,mat){
-    var dx=bx_-ax,dy=by-ay,dz=bz-az,len=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  function bar(ax,ay,az,ex,ey,ez,r,mat){
+    var dx=ex-ax,dy=ey-ay,dz=ez-az,len=Math.sqrt(dx*dx+dy*dy+dz*dz);
     var m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,6),mat);
-    m.position.set((ax+bx_)/2,(ay+by)/2,(az+bz)/2);
+    m.position.set((ax+ex)/2,(ay+ey)/2,(az+ez)/2);
     var q=new THREE.Quaternion();
     q.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(dx/len,dy/len,dz/len));
     m.setRotationFromQuaternion(q); return m;
   }
   var car=new THREE.Group();
-  // Chassis
-  car.add(bx(3.3,0.40,0.72,mW,0,0.05,0));
-  car.add(bx(1.65,0.21,0.54,mW,-0.52,0.31,0));
-  car.add(bx(0.58,0.13,0.60,mW,0.53,0.27,0));
-  // Nose — 3-stage taper
-  car.add(cy(0.27,0.28,0.44,8,mW,1.82,0.03,0,0,0,-PI/2));
-  car.add(cy(0.10,0.27,0.76,8,mW,2.31,0.00,0,0,0,-PI/2));
-  car.add(cy(0.03,0.10,0.70,8,mW,2.80,-0.02,0,0,0,-PI/2));
-  // Front wing — 3 cascade elements
+  // Chassis — navy blue monocoque
+  car.add(bx(3.3,0.40,0.72,mNav,0,0.05,0));
+  car.add(bx(1.65,0.21,0.54,mNav,-0.52,0.31,0));
+  car.add(bx(0.58,0.13,0.60,mNav,0.53,0.27,0));
+  // Nose — 3-stage taper, 16-sided for smooth silhouette, red tip
+  car.add(cy(0.27,0.28,0.44,16,mNav,1.82,0.03,0,0,0,-PI/2));
+  car.add(cy(0.10,0.27,0.76,16,mNav,2.31,0.00,0,0,0,-PI/2));
+  car.add(cy(0.05,0.10,0.50,16,mNav,2.70,-0.02,0,0,0,-PI/2));
+  car.add(cy(0.03,0.05,0.20,16,mRed,3.05,-0.02,0,0,0,-PI/2));
+  // Front wing — 3 carbon cascade elements + red endplates
   car.add(bx(0.30,0.040,2.12,mC,2.86,-0.245,0,0.02,0,0));
   car.add(bx(0.24,0.036,1.94,mC,2.66,-0.200,0,0.05,0,0));
   car.add(bx(0.18,0.030,1.74,mC,2.48,-0.158,0,0.08,0,0));
   [-1.03,1.03].forEach(function(z){
-    car.add(bx(0.50,0.32,0.05,mC,2.66,-0.095,z));
-    car.add(bx(0.20,0.10,0.05,mC,2.84,-0.30,z));
+    car.add(bx(0.50,0.32,0.05,mRed,2.66,-0.095,z));
+    car.add(bx(0.20,0.10,0.05,mRed,2.84,-0.30,z));
   });
   [-0.20,0.20].forEach(function(z){car.add(bx(0.06,0.24,0.04,mC,2.72,-0.075,z));});
-  // Sidepods
+  // Sidepods — navy body with red accent on outer face
   [-0.53,0.53].forEach(function(z){
-    car.add(bx(1.62,0.35,0.33,mW,-0.24,-0.03,z));
+    var sg=z>0?1:-1;
+    car.add(bx(1.62,0.35,0.33,mNav,-0.24,-0.03,z));
+    car.add(bx(0.90,0.32,0.012,mRed,-0.16,-0.03,z+sg*0.166));
     car.add(bx(0.09,0.21,0.09,mC,0.37,0.04,z));
     car.add(bx(1.22,0.08,0.26,mC,-0.39,-0.23,z));
   });
@@ -140,26 +147,33 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
   for(var bi=0;bi<3;bi++){
     [-0.34-bi*0.09,0.34+bi*0.09].forEach(function(z){car.add(bx(0.09,0.20,0.03,mC,0.84,-0.04,z));});
   }
-  // Engine fin + airbox + halo + mirrors
-  car.add(bx(0.72,0.48,0.05,mC,-0.18,0.44,0));
-  car.add(bx(0.21,0.19,0.32,mC,0.29,0.39,0));
-  car.add(bx(0.05,0.30,0.05,mC,0.47,0.36,-0.24));
-  car.add(bx(0.05,0.30,0.05,mC,0.47,0.36, 0.24));
-  car.add(bx(0.40,0.058,0.52,mC,0.67,0.55,0));
-  [-0.25,0.25].forEach(function(z){car.add(bx(0.15,0.04,0.09,mC,0.49,0.59,z));});
+  // Engine fin (navy + gold top stripe) + airbox
+  car.add(bx(0.72,0.46,0.05,mNav,-0.18,0.43,0));
+  car.add(bx(0.72,0.04,0.05,mGold,-0.18,0.65,0));
+  car.add(bx(0.21,0.19,0.32,mNav,0.29,0.39,0));
+  // Halo — central post + top arch + angled rear legs
+  car.add(bx(0.06,0.34,0.042,mG,0.60,0.52,0));
+  car.add(bx(0.50,0.072,0.56,mG,0.57,0.70,0));
+  car.add(bar(0.40,0.70,-0.28, 0.18,0.30,-0.26, 0.022,mG));
+  car.add(bar(0.40,0.70, 0.28, 0.18,0.30, 0.26, 0.022,mG));
+  // Mirrors — stanchion + polished face
+  car.add(bx(0.04,0.28,0.04,mC,0.50,0.38,-0.26));
+  car.add(bx(0.04,0.28,0.04,mC,0.50,0.38, 0.26));
+  car.add(bx(0.11,0.07,0.17,mR,0.47,0.53,-0.26));
+  car.add(bx(0.11,0.07,0.17,mR,0.47,0.53, 0.26));
   // Helmet (Verstappen blue)
   var helm=mk(new THREE.SphereGeometry(0.14,18,14),mB,0.41,0.36,0);
   helm.scale.set(1.2,0.92,1.1); car.add(helm);
-  // Floor + diffuser strakes
-  car.add(bx(3.12,0.042,1.52,mC,-0.08,-0.21,0));
-  for(var ds=-2;ds<=2;ds++){car.add(bx(0.64,0.13,0.03,mC,-1.83,-0.15,ds*0.23));}
-  // Rear crash structure + beam wing + rear wing
-  car.add(bx(0.33,0.23,0.42,mW,-1.71,0.07,0));
+  // Floor (1.80 m wide) + diffuser strakes
+  car.add(bx(3.12,0.042,1.80,mC,-0.08,-0.21,0));
+  for(var ds=-3;ds<=3;ds++){car.add(bx(0.64,0.13,0.03,mC,-1.83,-0.15,ds*0.245));}
+  // Rear crash structure (navy) + beam wing + rear wing + red endplates
+  car.add(bx(0.33,0.23,0.42,mNav,-1.71,0.07,0));
   car.add(bx(0.54,0.065,0.90,mC,-1.85,0.19,0));
   car.add(bx(0.27,0.058,1.60,mC,-2.03,0.69,0,0.12,0,0));
   car.add(bx(0.18,0.046,1.48,mC,-1.87,0.63,0,0.05,0,0));
   [-0.80,0.80].forEach(function(z){
-    car.add(bx(0.31,0.58,0.048,mC,-1.97,0.41,z));
+    car.add(bx(0.31,0.58,0.048,mRed,-1.97,0.41,z));
     car.add(bx(0.11,0.13,0.050,mC,-2.05,0.14,z));
   });
   // Suspension wishbones — bar() aligns a cylinder between two 3-D points exactly
@@ -177,13 +191,13 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
     car.add(bar(wx,-0.28,wz,-1.12,-0.20,ci, 0.016,mG));
     car.add(bar(wx,-0.28,wz,-1.44,-0.18,ci, 0.016,mG));
   });
-  // Wheels — 5-spoke rim with face disc
+  // Wheels — 5-spoke rim with outer face cover; rear tyres 405 mm wide
   function addWheel(x,z,tw){
     var g=new THREE.Group();
     var fs=(z>0)?1:-1,fY=fs*tw*0.46;
-    g.add(mk(new THREE.CylinderGeometry(0.34,0.34,tw,28),mT,0,0,0));
-    g.add(mk(new THREE.CylinderGeometry(0.258,0.258,tw+0.005,22),mR,0,0,0));
-    g.add(mk(new THREE.CylinderGeometry(0.268,0.268,0.024,22),mR,0,fY,0));
+    g.add(mk(new THREE.CylinderGeometry(0.34,0.34,tw,32),mT,0,0,0));
+    g.add(mk(new THREE.CylinderGeometry(0.258,0.258,tw+0.005,28),mR,0,0,0));
+    g.add(mk(new THREE.CylinderGeometry(0.268,0.268,0.028,28),mR,0,fY,0));
     g.add(mk(new THREE.CylinderGeometry(0.068,0.068,tw+0.03,12),mG,0,0,0));
     for(var i=0;i<5;i++){
       var pv=new THREE.Group();
@@ -194,7 +208,7 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
     g.rotation.x=PI/2; g.position.set(x,-0.22,z); car.add(g);
   }
   addWheel(1.72,-0.80,0.300); addWheel(1.72,0.80,0.300);
-  addWheel(-1.52,-0.88,0.375); addWheel(-1.52,0.88,0.375);
+  addWheel(-1.52,-0.88,0.405); addWheel(-1.52,0.88,0.405);
   scene.add(car); car.rotation.y=PI/6;
   function animate(){requestAnimationFrame(animate);car.rotation.y+=0.004;renderer.render(scene,cam);}
   animate();

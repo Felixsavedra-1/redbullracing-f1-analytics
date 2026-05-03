@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Tuple
+from collections.abc import Callable
+from typing import Any
 import pandas as pd
 from pandas.api.types import (
     is_datetime64_any_dtype,
@@ -10,7 +11,7 @@ from pandas.api.types import (
     is_object_dtype,
 )
 
-_TYPE_CHECK: Dict[str, Callable] = {
+_TYPE_CHECK: dict[str, Callable] = {
     "numeric":  is_numeric_dtype,
     "integer":  is_integer_dtype,
     "float":    is_float_dtype,
@@ -18,7 +19,7 @@ _TYPE_CHECK: Dict[str, Callable] = {
     "datetime": is_datetime64_any_dtype,
 }
 
-SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
+SCHEMA_CONTRACTS: dict[str, dict[str, list[str]]] = {
     "circuits": {
         "required": [
             "circuit_id",
@@ -169,7 +170,7 @@ SCHEMA_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
 }
 
 
-def _check_types(df: pd.DataFrame, columns: List[str], type_name: str) -> List[str]:
+def _check_types(df: pd.DataFrame, columns: list[str], type_name: str) -> list[str]:
     checker = _TYPE_CHECK.get(type_name)
     if not checker:
         raise ValueError(f"Unknown type_name: {type_name}")
@@ -180,7 +181,7 @@ def _check_types(df: pd.DataFrame, columns: List[str], type_name: str) -> List[s
     ]
 
 
-def _check_constraints(df: pd.DataFrame, constraints: Dict[str, Tuple[str, Any]]) -> List[str]:
+def _check_constraints(df: pd.DataFrame, constraints: dict[str, tuple[str, Any]]) -> list[str]:
     issues = []
     for col, (kind, bound) in constraints.items():
         if col not in df.columns:
@@ -197,7 +198,7 @@ def _check_constraints(df: pd.DataFrame, constraints: Dict[str, Tuple[str, Any]]
     return issues
 
 
-def validate_dataframe(table_name: str, df: pd.DataFrame) -> List[str]:
+def validate_dataframe(table_name: str, df: pd.DataFrame) -> list[str]:
     """Validate dataframe against a simple schema contract."""
     contract = SCHEMA_CONTRACTS.get(table_name)
     if not contract:

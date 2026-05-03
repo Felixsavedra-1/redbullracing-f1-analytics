@@ -21,7 +21,8 @@ class TestReadCsvSafe(unittest.TestCase):
     def test_empty_file_returns_none(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "empty.csv")
-            with open(path, "w"): pass
+            with open(path, "w"):
+                pass
             t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
             self.assertIsNone(t._read_csv_safe("empty.csv"))
 

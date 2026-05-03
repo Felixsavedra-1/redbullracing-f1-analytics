@@ -1,6 +1,6 @@
 # Red Bull F1 Analytics
 
-ETL pipeline for Formula 1 performance analysis — Red Bull, AlphaTauri, and RB, 2020–2025. Extracts from the Ergast API into a star-schema SQLite database, with 14 parameterized analytical queries, statistical models, and a Power BI dashboard.
+ETL pipeline for Formula 1 performance analysis — Oracle Red Bull Racing, 2020–2025. Extracts from the Ergast API into a star-schema SQLite database, with 14 parameterized analytical queries, statistical models, and a Power BI dashboard.
 
 ---
 
@@ -28,14 +28,12 @@ Runs extract → transform → load, then prints a driver summary:
 
 ```
 ──────────────────────────────────────────────────────────────────────
-  Red Bull Drivers  2020–2025
+  Oracle Red Bull Racing Drivers  2020–2025
 ──────────────────────────────────────────────────────────────────────
-  Driver              Team              Period    Races    Pts  Wins  Pods   Avg  DNFs
-  ──────────────────  ────────────────  ──────  ───────  ────  ────  ────  ────  ────
-  Max Verstappen      Red Bull          2020–25     131  3017    63    84   1.9     5
-  Sergio Pérez        Red Bull          2021–24      84  1341     8    35   5.1     9
-  Pierre Gasly        AlphaTauri · RB   2020–24      87   387     1     5   9.2    12
-  Yuki Tsunoda        AlphaTauri · RB   2021–25      99   211     0     0  11.4    14
+  Driver              Team      Period    Races    Pts  Wins  Pods   Avg  DNFs
+  ──────────────────  ────────  ──────  ───────  ────  ────  ────  ────  ────
+  Max Verstappen      Red Bull  2020–25     131  3017    63    84   1.9     5
+  Sergio Pérez        Red Bull  2021–24      84  1341     8    35   5.1     9
   ...
 ──────────────────────────────────────────────────────────────────────
 ```
@@ -81,7 +79,7 @@ open data/exports/dashboard.html
 
 ![Dashboard](docs/dashboard.png)
 
-Three interactive Plotly charts (hover for lap-by-lap detail, scroll to zoom): championship trajectory, race finish positions, and grid vs finish. Three.js F1 cars rendered per constructor — Red Bull in red/blue, AlphaTauri in white/red, RB in white/blue.
+Three interactive Plotly charts (hover for lap-by-lap detail, scroll to zoom): championship trajectory, race finish positions, and grid vs finish. Neon glow traces on a black background with orbital camera rotation.
 
 ---
 

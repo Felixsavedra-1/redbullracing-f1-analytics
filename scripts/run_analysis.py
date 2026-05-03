@@ -140,7 +140,6 @@ def run(export: bool = False) -> None:
             logger.info("  → %s", dash_path)
         except Exception:
             logger.exception("Dashboard generation failed.")
-            sys.exit(1)
 
 
 def main() -> None:

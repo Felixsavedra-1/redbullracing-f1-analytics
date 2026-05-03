@@ -4,8 +4,8 @@ import os
 import random
 import sys
 import time
+from collections.abc import Callable, Iterator
 from datetime import datetime
-from typing import Callable, Dict, Iterator, List, Optional
 
 import pandas as pd
 import requests
@@ -18,14 +18,14 @@ from logging_utils import setup_logging
 from constants import DEFAULT_START_YEAR, DEFAULT_END_YEAR, DNF_POSITION_ORDER
 
 
-def _safe_float(val) -> Optional[float]:
+def _safe_float(val) -> float | None:
     try:
         return float(val) if val else None
     except (ValueError, TypeError):
         return None
 
 
-def _safe_int(val) -> Optional[int]:
+def _safe_int(val) -> int | None:
     try:
         return int(val) if val else None
     except (ValueError, TypeError):
@@ -43,7 +43,7 @@ class F1DataExtractor:
         max_backoff: float = 20.0,
         max_base_delay: float = 8.0,
         timeout: int = 30,
-        circuit_breaker_limit: Optional[int] = 50,
+        circuit_breaker_limit: int | None = 50,
     ):
         self.output_path = output_path
         base_dir = os.path.dirname(os.path.normpath(output_path)) or "."
@@ -62,7 +62,7 @@ class F1DataExtractor:
         os.makedirs(output_path, exist_ok=True)
         os.makedirs(self.cache_path, exist_ok=True)
 
-    def _backoff(self, attempt: int, retry_after: Optional[str]) -> None:
+    def _backoff(self, attempt: int, retry_after: str | None) -> None:
         if retry_after:
             try:
                 delay = float(retry_after)
@@ -86,7 +86,7 @@ class F1DataExtractor:
             time.sleep(self.base_delay - elapsed)
         self._last_request_ts = time.time()
 
-    def _get_total(self, json_data: Optional[Dict]) -> int:
+    def _get_total(self, json_data: dict | None) -> int:
         if not json_data:
             return 0
         try:
@@ -95,7 +95,7 @@ class F1DataExtractor:
         except (TypeError, ValueError):
             return 0
 
-    def _parse_duration_ms(self, duration: str) -> Optional[int]:
+    def _parse_duration_ms(self, duration: str) -> int | None:
         if not duration:
             return None
         value = duration.strip()
@@ -150,7 +150,7 @@ class F1DataExtractor:
         if os.path.getsize(path) < 10:
             self.logger.warning("%s was written but appears empty.", filename)
 
-    def _make_request(self, endpoint: str, limit: int = 1000, offset: int = 0) -> Optional[Dict]:
+    def _make_request(self, endpoint: str, limit: int = 1000, offset: int = 0) -> dict | None:
         url = f"{self.BASE_URL}/{endpoint}.json?limit={limit}&offset={offset}"
 
         for attempt in range(self.max_retries):
@@ -187,7 +187,7 @@ class F1DataExtractor:
         self.logger.error("Failed to fetch %s after %s retries.", endpoint, self.max_retries)
         return None
     
-    def _extract_table(self, json_data: Dict, table_name: str) -> List[Dict]:
+    def _extract_table(self, json_data: dict, table_name: str) -> list[dict]:
         if not json_data or 'MRData' not in json_data:
             return []
         
@@ -204,10 +204,7 @@ class F1DataExtractor:
         for key, value in table_data.items():
             if isinstance(value, list):
                 return value
-        
-        if 'StandingsLists' in table_data:
-            return table_data['StandingsLists']
-        
+
         return []
     
     def _paginate(
@@ -328,15 +325,15 @@ class F1DataExtractor:
         self,
         start_year: int,
         end_year: int,
-        rounds_by_year: Dict[int, List[int]],
+        rounds_by_year: dict[int, list[int]],
         endpoint: str,
         progress_file: str,
         output_file: str,
         parse_race: Callable,  # (race_dict, race_id) -> list[dict]
         label: str,
         min_rows_per_race: int = 0,
-    ) -> List[Dict]:
-        rows: List[Dict] = []
+    ) -> list[dict]:
+        rows: list[dict] = []
         progress = self._load_progress(progress_file, start_year, end_year)
         races_count = sum(len(rounds_by_year.get(y) or []) for y in range(start_year, end_year + 1))
 
@@ -380,7 +377,7 @@ class F1DataExtractor:
 
         return rows
 
-    def _parse_results_race(self, race: Dict, race_id: int) -> List[Dict]:
+    def _parse_results_race(self, race: dict, race_id: int) -> list[dict]:
         results = race.get("Results", [])
         if not isinstance(results, list):
             results = [results]
@@ -411,7 +408,7 @@ class F1DataExtractor:
             })
         return rows
 
-    def _parse_qualifying_race(self, race: Dict, race_id: int) -> List[Dict]:
+    def _parse_qualifying_race(self, race: dict, race_id: int) -> list[dict]:
         qualifying_results = race.get("QualifyingResults", [])
         if not isinstance(qualifying_results, list):
             qualifying_results = [qualifying_results]
@@ -431,7 +428,7 @@ class F1DataExtractor:
             })
         return rows
 
-    def _parse_pit_stops_race(self, race: Dict, race_id: int) -> List[Dict]:
+    def _parse_pit_stops_race(self, race: dict, race_id: int) -> list[dict]:
         pit_stops = race.get("PitStops", [])
         if not isinstance(pit_stops, list):
             pit_stops = [pit_stops]
@@ -449,7 +446,7 @@ class F1DataExtractor:
             })
         return rows
 
-    def extract_results(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR):
+    def extract_results(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR) -> pd.DataFrame:
         self.logger.info("Extracting results (%s-%s)...", start_year, end_year)
         rounds_by_year = self._get_rounds_by_year(start_year, end_year)
         rows = self._extract_per_round(
@@ -466,7 +463,7 @@ class F1DataExtractor:
         self.logger.info("Extracted %s results.", len(df))
         return df
 
-    def extract_qualifying(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR):
+    def extract_qualifying(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR) -> pd.DataFrame:
         self.logger.info("Extracting qualifying (%s-%s)...", start_year, end_year)
         rounds_by_year = self._get_rounds_by_year(start_year, end_year)
         rows = self._extract_per_round(
@@ -485,12 +482,12 @@ class F1DataExtractor:
         return df
     
     def _normalize_progress(
-        self, data: Dict, start_year: int, end_year: int
-    ) -> Dict[str, Dict[str, List[int]]]:
+        self, data: dict, start_year: int, end_year: int
+    ) -> dict[str, dict[str, list[int]]]:
         years = data.get("years", data) if isinstance(data, dict) else {}
         skipped = data.get("skipped", {}) if isinstance(data, dict) else {}
 
-        def clean(rounds) -> List[int]:
+        def clean(rounds) -> list[int]:
             if not isinstance(rounds, list):
                 return []
             return sorted({int(r) for r in rounds if str(r).isdigit()})
@@ -506,7 +503,7 @@ class F1DataExtractor:
     def _legacy_progress_path(self, filename: str) -> str:
         return os.path.join(self.output_path, filename)
 
-    def _load_progress(self, filename: str, start_year: int, end_year: int) -> Dict[str, Dict[str, List[int]]]:
+    def _load_progress(self, filename: str, start_year: int, end_year: int) -> dict[str, dict[str, list[int]]]:
         path = self._progress_path(filename)
         legacy_path = self._legacy_progress_path(filename)
         try_paths = [path, legacy_path]
@@ -531,7 +528,7 @@ class F1DataExtractor:
     def _save_progress(
         self,
         filename: str,
-        data: Dict[str, Dict[str, List[int]]],
+        data: dict[str, dict[str, list[int]]],
         start_year: int,
         end_year: int,
     ) -> None:
@@ -548,7 +545,7 @@ class F1DataExtractor:
             json.dump(payload, handle, indent=2, sort_keys=True)
         os.replace(tmp_path, path)
 
-    def extract_pit_stops(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR):
+    def extract_pit_stops(self, start_year: int = DEFAULT_START_YEAR, end_year: int = DEFAULT_END_YEAR) -> pd.DataFrame:
         # Pit stop data is only available from 2012 onward in the Ergast API.
         self.logger.info("Extracting pit stops (%s-%s)...", start_year, end_year)
         rounds_by_year = self._get_rounds_by_year(start_year, end_year)
@@ -566,13 +563,13 @@ class F1DataExtractor:
         self.logger.info("Extracted %s pit stops.", len(df))
         return df
     
-    def _get_rounds_by_year(self, start_year: int, end_year: int) -> Dict[int, List[int]]:
+    def _get_rounds_by_year(self, start_year: int, end_year: int) -> dict[int, list[int]]:
         races_path = os.path.join(self.output_path, "races.csv")
         if not os.path.exists(races_path):
             return {}
         try:
             races_df = pd.read_csv(races_path)
-            rounds_by_year: Dict[int, List[int]] = {}
+            rounds_by_year: dict[int, list[int]] = {}
             for year in range(start_year, end_year + 1):
                 year_rounds = races_df[races_df["year"] == year]["round"].dropna().astype(int).tolist()
                 rounds_by_year[year] = sorted(set(year_rounds))
@@ -589,8 +586,8 @@ class F1DataExtractor:
         entity_key: str,
         ref_field: str,
         id_attr: str,
-    ) -> List[Dict]:
-        rows: List[Dict] = []
+    ) -> list[dict]:
+        rows: list[dict] = []
         for year in range(start_year, end_year + 1):
             for batch in self._paginate(f"{year}/{endpoint}", "StandingsTable", limit=1000):
                 for sl in batch:
@@ -674,7 +671,7 @@ class F1DataExtractor:
             self.logger.exception("Error during extraction.")
             raise
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Extract F1 data from Ergast API")
     parser.add_argument(
         '--start-year',

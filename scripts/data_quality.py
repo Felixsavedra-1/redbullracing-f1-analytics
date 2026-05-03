@@ -54,7 +54,7 @@ def run_quality_checks(
         ("results",   "race_id",        "races"),
         ("results",   "driver_id",      "drivers"),
         ("results",   "constructor_id", "constructors"),
-        ("qualifying","race_id",        "races"),
+        ("qualifying", "race_id",        "races"),
         ("pit_stops", "race_id",        "races"),
     ]:
         label = fk.replace("_id", "")
