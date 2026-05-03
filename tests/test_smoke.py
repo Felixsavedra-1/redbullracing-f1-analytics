@@ -1,4 +1,3 @@
-import csv
 import os
 import sqlite3
 import tempfile
@@ -7,14 +6,7 @@ import unittest
 from scripts.transform_data import F1DataTransformer
 from scripts.load_data import F1DataLoader
 from scripts.data_quality import run_quality_checks
-
-
-def write_csv(path, headers, rows):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(headers)
-        writer.writerows(rows)
+from tests.utils import write_csv
 
 
 class TestPipelineSmoke(unittest.TestCase):

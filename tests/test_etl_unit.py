@@ -1,5 +1,4 @@
 """Unit tests for ETL edge cases: missing files, unmapped refs, schema violations, DNF sentinel."""
-import csv
 import os
 import tempfile
 import unittest
@@ -10,14 +9,7 @@ from sqlalchemy import inspect as sa_inspect
 from scripts.transform_data import F1DataTransformer
 from scripts.load_data import F1DataLoader
 from scripts.constants import DNF_POSITION_ORDER
-
-
-def write_csv(path, headers, rows):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(headers)
-        w.writerows(rows)
+from tests.utils import write_csv
 
 
 class TestReadCsvSafe(unittest.TestCase):
@@ -29,7 +21,7 @@ class TestReadCsvSafe(unittest.TestCase):
     def test_empty_file_returns_none(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "empty.csv")
-            open(path, "w").close()
+            with open(path, "w"): pass
             t = F1DataTransformer(raw_data_path=tmp + "/", processed_data_path=tmp + "/")
             self.assertIsNone(t._read_csv_safe("empty.csv"))
 
@@ -121,30 +113,20 @@ class TestDNFSentinel(unittest.TestCase):
 
 
 class TestStrictSchema(unittest.TestCase):
-    def test_strict_schema_raises_on_violation(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = os.path.join(tmp, "test.db")
-            loader = F1DataLoader(
-                config={"type": "sqlite", "filename": db_path},
-                processed_data_path=tmp + "/",
-                strict_schema=True,
-            )
-            # circuits contract requires circuit_id; omitting it should raise
-            bad_df = pd.DataFrame({"circuit_name": ["Silverstone"]})
-            with self.assertRaises(ValueError):
-                loader._validate_df(bad_df, "circuits")
-
-    def test_lenient_schema_warns_not_raises(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            db_path = os.path.join(tmp, "test.db")
-            loader = F1DataLoader(
-                config={"type": "sqlite", "filename": db_path},
-                processed_data_path=tmp + "/",
-                strict_schema=False,
-            )
-            bad_df = pd.DataFrame({"circuit_name": ["Silverstone"]})
-            # should not raise
-            loader._validate_df(bad_df, "circuits")
+    def test_strict_schema_controls_raise_behavior(self):
+        bad_df = pd.DataFrame({"circuit_name": ["Silverstone"]})
+        for strict, should_raise in [(True, True), (False, False)]:
+            with self.subTest(strict=strict), tempfile.TemporaryDirectory() as tmp:
+                loader = F1DataLoader(
+                    config={"type": "sqlite", "filename": os.path.join(tmp, "test.db")},
+                    processed_data_path=tmp + "/",
+                    strict_schema=strict,
+                )
+                if should_raise:
+                    with self.assertRaises(ValueError):
+                        loader._validate_df(bad_df, "circuits")
+                else:
+                    loader._validate_df(bad_df, "circuits")
 
 
 class TestNormalizeProgress(unittest.TestCase):
@@ -253,8 +235,6 @@ class TestInvalidInputs(unittest.TestCase):
             df = pd.DataFrame({"driver_ref": ["ghost_driver"]})
             result = t._apply_ref_map(df, "driver_ref", "driver_id", "drivers.csv")
             self.assertTrue(result.empty)
-            if not result.empty:
-                self.assertNotIn(0, result["driver_id"].tolist())
 
     def test_strict_schema_rejects_missing_required_column(self):
         """Loading a DataFrame missing a required column raises ValueError in strict mode."""

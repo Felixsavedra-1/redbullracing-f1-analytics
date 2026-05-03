@@ -17,16 +17,19 @@ from analytics import _ref_params, championship_trajectory
 
 logger = logging.getLogger("f1_analytics")
 
-_BG   = "#000000"
-_FONT = "Courier New, monospace"
-_GRID    = "#1e1e1e"
-_TICK    = "#888888"
-_RED     = "#E8002D"
+_BG             = "#000000"
+_FONT           = "Courier New, monospace"
+_GRID           = "#1e1e1e"
+_TICK           = "#888888"
+_ACCENT         = "#FFFFFF"   # white
+_MAX_COLOR      = "#1E41FF"   # Verstappen blue
+_TEAMMATE_COLOR = "#FF1800"   # teammate red
 
-_DRIVER_COLORS = [
-    "#3399FF", "#FF6B00", "#00DDFF", "#FFD700",
-    "#CC44FF", "#00FF88", "#FF44AA", "#FFFFFF",
-]
+
+def _driver_color(name: str, idx: int) -> str:
+    if "Verstappen" in name:
+        return _MAX_COLOR
+    return _TEAMMATE_COLOR if idx > 0 else _MAX_COLOR
 
 
 # --------------------------------------------------------------------------- #
@@ -40,15 +43,18 @@ _HTML_TEMPLATE = """\
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PLACEHOLDER_TITLE</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;color:#fff;font-family:'Courier New',monospace}
-header{padding:40px 32px 32px;border-bottom:3px solid #E8002D}
+header{padding:40px 32px 32px;border-bottom:3px solid #FFFFFF}
 h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em}
 .sub{color:#666;font-size:.7rem;letter-spacing:.15em;margin-top:8px;text-transform:uppercase}
+.car-viewer{padding:24px 0 0;display:flex;justify-content:center}
+#f1car{display:block;width:100%;height:440px}
 .charts{padding:32px;display:grid;grid-template-columns:1fr;gap:32px}
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:32px}
-.chart-section{border-top:1px solid #E8002D;padding-top:16px}
+.chart-section{border-top:1px solid #FFFFFF;padding-top:16px}
 @media(max-width:860px){.chart-row{grid-template-columns:1fr}}
 </style>
 </head>
@@ -57,6 +63,9 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
   <h1>PLACEHOLDER_HEADING</h1>
   <p class="sub">PLACEHOLDER_SUBTITLE</p>
 </header>
+<div class="car-viewer">
+  <canvas id="f1car"></canvas>
+</div>
 <div class="charts">
   <div class="chart-section">PLACEHOLDER_C1</div>
   <div class="chart-row">
@@ -64,6 +73,137 @@ h1{font-size:1.5rem;font-weight:700;text-transform:uppercase;letter-spacing:.2em
     <div class="chart-section">PLACEHOLDER_C3</div>
   </div>
 </div>
+<script>
+(function(){
+  var c=document.getElementById('f1car');
+  if(!c||typeof THREE==='undefined') return;
+  var H=440,W=c.parentElement.offsetWidth||900;
+  c.width=W; c.height=H;
+  var renderer=new THREE.WebGLRenderer({canvas:c,antialias:true,alpha:true});
+  renderer.setSize(W,H); renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  var scene=new THREE.Scene();
+  var cam=new THREE.PerspectiveCamera(35,W/H,0.1,100);
+  cam.position.set(5.5,2.4,4.8); cam.lookAt(0,0.1,0);
+  scene.add(new THREE.AmbientLight(0xffffff,0.48));
+  var s1=new THREE.DirectionalLight(0xffffff,1.0); s1.position.set(6,12,5); scene.add(s1);
+  var s2=new THREE.DirectionalLight(0x7799cc,0.3); s2.position.set(-5,3,-3); scene.add(s2);
+  var s3=new THREE.DirectionalLight(0xffffff,0.15); s3.position.set(0,1,-8); scene.add(s3);
+  var gnd=new THREE.Mesh(new THREE.PlaneGeometry(18,14),
+    new THREE.MeshPhongMaterial({color:0x060606,specular:0x0d0d0d,shininess:20}));
+  gnd.rotation.x=-Math.PI/2; gnd.position.y=-0.57; scene.add(gnd);
+  var mW=new THREE.MeshPhongMaterial({color:0xE3E3E3,specular:0xaaaaaa,shininess:90});
+  var mC=new THREE.MeshPhongMaterial({color:0x141414,specular:0x2a2a2a,shininess:40});
+  var mT=new THREE.MeshPhongMaterial({color:0x060606,shininess:5});
+  var mR=new THREE.MeshPhongMaterial({color:0x333333,specular:0xdddddd,shininess:160});
+  var mG=new THREE.MeshPhongMaterial({color:0x777777,specular:0x666666,shininess:70});
+  var mB=new THREE.MeshPhongMaterial({color:0x1E41FF,specular:0x4455cc,shininess:100});
+  var PI=Math.PI;
+  function mk(geo,mat,x,y,z,rx,ry,rz){
+    var m=new THREE.Mesh(geo,mat);
+    m.position.set(x||0,y||0,z||0); m.rotation.set(rx||0,ry||0,rz||0); return m;
+  }
+  function bx(w,h,d,mat,x,y,z,rx,ry,rz){return mk(new THREE.BoxGeometry(w,h,d),mat,x,y,z,rx,ry,rz);}
+  function cy(r1,r2,h,s,mat,x,y,z,rx,ry,rz){return mk(new THREE.CylinderGeometry(r1,r2,h,s),mat,x,y,z,rx,ry,rz);}
+  function bar(ax,ay,az,bx_,by,bz,r,mat){
+    var dx=bx_-ax,dy=by-ay,dz=bz-az,len=Math.sqrt(dx*dx+dy*dy+dz*dz);
+    var m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,6),mat);
+    m.position.set((ax+bx_)/2,(ay+by)/2,(az+bz)/2);
+    var q=new THREE.Quaternion();
+    q.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(dx/len,dy/len,dz/len));
+    m.setRotationFromQuaternion(q); return m;
+  }
+  var car=new THREE.Group();
+  // Chassis
+  car.add(bx(3.3,0.40,0.72,mW,0,0.05,0));
+  car.add(bx(1.65,0.21,0.54,mW,-0.52,0.31,0));
+  car.add(bx(0.58,0.13,0.60,mW,0.53,0.27,0));
+  // Nose — 3-stage taper
+  car.add(cy(0.27,0.28,0.44,8,mW,1.82,0.03,0,0,0,-PI/2));
+  car.add(cy(0.10,0.27,0.76,8,mW,2.31,0.00,0,0,0,-PI/2));
+  car.add(cy(0.03,0.10,0.70,8,mW,2.80,-0.02,0,0,0,-PI/2));
+  // Front wing — 3 cascade elements
+  car.add(bx(0.30,0.040,2.12,mC,2.86,-0.245,0,0.02,0,0));
+  car.add(bx(0.24,0.036,1.94,mC,2.66,-0.200,0,0.05,0,0));
+  car.add(bx(0.18,0.030,1.74,mC,2.48,-0.158,0,0.08,0,0));
+  [-1.03,1.03].forEach(function(z){
+    car.add(bx(0.50,0.32,0.05,mC,2.66,-0.095,z));
+    car.add(bx(0.20,0.10,0.05,mC,2.84,-0.30,z));
+  });
+  [-0.20,0.20].forEach(function(z){car.add(bx(0.06,0.24,0.04,mC,2.72,-0.075,z));});
+  // Sidepods
+  [-0.53,0.53].forEach(function(z){
+    car.add(bx(1.62,0.35,0.33,mW,-0.24,-0.03,z));
+    car.add(bx(0.09,0.21,0.09,mC,0.37,0.04,z));
+    car.add(bx(1.22,0.08,0.26,mC,-0.39,-0.23,z));
+  });
+  // Bargeboards
+  for(var bi=0;bi<3;bi++){
+    [-0.34-bi*0.09,0.34+bi*0.09].forEach(function(z){car.add(bx(0.09,0.20,0.03,mC,0.84,-0.04,z));});
+  }
+  // Engine fin + airbox + halo + mirrors
+  car.add(bx(0.72,0.48,0.05,mC,-0.18,0.44,0));
+  car.add(bx(0.21,0.19,0.32,mC,0.29,0.39,0));
+  car.add(bx(0.05,0.30,0.05,mC,0.47,0.36,-0.24));
+  car.add(bx(0.05,0.30,0.05,mC,0.47,0.36, 0.24));
+  car.add(bx(0.40,0.058,0.52,mC,0.67,0.55,0));
+  [-0.25,0.25].forEach(function(z){car.add(bx(0.15,0.04,0.09,mC,0.49,0.59,z));});
+  // Helmet (Verstappen blue)
+  var helm=mk(new THREE.SphereGeometry(0.14,18,14),mB,0.41,0.36,0);
+  helm.scale.set(1.2,0.92,1.1); car.add(helm);
+  // Floor + diffuser strakes
+  car.add(bx(3.12,0.042,1.52,mC,-0.08,-0.21,0));
+  for(var ds=-2;ds<=2;ds++){car.add(bx(0.64,0.13,0.03,mC,-1.83,-0.15,ds*0.23));}
+  // Rear crash structure + beam wing + rear wing
+  car.add(bx(0.33,0.23,0.42,mW,-1.71,0.07,0));
+  car.add(bx(0.54,0.065,0.90,mC,-1.85,0.19,0));
+  car.add(bx(0.27,0.058,1.60,mC,-2.03,0.69,0,0.12,0,0));
+  car.add(bx(0.18,0.046,1.48,mC,-1.87,0.63,0,0.05,0,0));
+  [-0.80,0.80].forEach(function(z){
+    car.add(bx(0.31,0.58,0.048,mC,-1.97,0.41,z));
+    car.add(bx(0.11,0.13,0.050,mC,-2.05,0.14,z));
+  });
+  // Suspension wishbones — bar() aligns a cylinder between two 3-D points exactly
+  [[1.72,-0.80],[1.72,0.80]].forEach(function(w){
+    var wx=w[0],wz=w[1],ci=wz>0?0.22:-0.22;
+    car.add(bar(wx, 0.00,wz, 1.52, 0.08,ci, 0.016,mG));
+    car.add(bar(wx, 0.00,wz, 1.18, 0.06,ci, 0.016,mG));
+    car.add(bar(wx,-0.28,wz, 1.50,-0.22,ci, 0.016,mG));
+    car.add(bar(wx,-0.28,wz, 1.16,-0.22,ci, 0.016,mG));
+  });
+  [[-1.52,-0.88],[-1.52,0.88]].forEach(function(w){
+    var wx=w[0],wz=w[1],ci=wz>0?0.24:-0.24;
+    car.add(bar(wx, 0.00,wz,-1.10, 0.06,ci, 0.016,mG));
+    car.add(bar(wx, 0.00,wz,-1.42, 0.04,ci, 0.016,mG));
+    car.add(bar(wx,-0.28,wz,-1.12,-0.20,ci, 0.016,mG));
+    car.add(bar(wx,-0.28,wz,-1.44,-0.18,ci, 0.016,mG));
+  });
+  // Wheels — 5-spoke rim with face disc
+  function addWheel(x,z,tw){
+    var g=new THREE.Group();
+    var fs=(z>0)?1:-1,fY=fs*tw*0.46;
+    g.add(mk(new THREE.CylinderGeometry(0.34,0.34,tw,28),mT,0,0,0));
+    g.add(mk(new THREE.CylinderGeometry(0.258,0.258,tw+0.005,22),mR,0,0,0));
+    g.add(mk(new THREE.CylinderGeometry(0.268,0.268,0.024,22),mR,0,fY,0));
+    g.add(mk(new THREE.CylinderGeometry(0.068,0.068,tw+0.03,12),mG,0,0,0));
+    for(var i=0;i<5;i++){
+      var pv=new THREE.Group();
+      pv.rotation.y=i*2*PI/5; pv.position.y=fY;
+      var sp=new THREE.Mesh(new THREE.BoxGeometry(0.258,0.022,0.018),mR);
+      sp.position.x=0.129; pv.add(sp); g.add(pv);
+    }
+    g.rotation.x=PI/2; g.position.set(x,-0.22,z); car.add(g);
+  }
+  addWheel(1.72,-0.80,0.300); addWheel(1.72,0.80,0.300);
+  addWheel(-1.52,-0.88,0.375); addWheel(-1.52,0.88,0.375);
+  scene.add(car); car.rotation.y=PI/6;
+  function animate(){requestAnimationFrame(animate);car.rotation.y+=0.004;renderer.render(scene,cam);}
+  animate();
+  window.addEventListener('resize',function(){
+    var nW=c.parentElement.offsetWidth||900;
+    cam.aspect=nW/H; cam.updateProjectionMatrix(); renderer.setSize(nW,H);
+  });
+})();
+</script>
 </body>
 </html>
 """
@@ -78,7 +218,7 @@ def _axis_2d(title: str = "") -> dict:
         gridcolor=_GRID,
         zerolinecolor=_GRID,
         tickfont=dict(color=_TICK, family=_FONT, size=10),
-        linecolor=_RED,
+        linecolor=_ACCENT,
         linewidth=2,
         showline=True,
         showgrid=True,
@@ -107,13 +247,13 @@ def _layout_2d(title: str, xaxis_title: str = "", yaxis_title: str = "",
         legend=dict(
             font=dict(family=_FONT, color="#888888", size=10),
             bgcolor="rgba(0,0,0,0)",
-            bordercolor=_RED,
+            bordercolor=_ACCENT,
             borderwidth=1,
         ),
         hovermode=hovermode,
         hoverlabel=dict(
             bgcolor="#000000",
-            bordercolor=_RED,
+            bordercolor=_ACCENT,
             font=dict(family=_FONT, size=11, color="#ffffff"),
             namelength=-1,
         ),
@@ -163,7 +303,7 @@ def chart_championship_2d(traj_df: pd.DataFrame) -> go.Figure:
     fig = go.Figure(layout=layout)
 
     for i, (driver, g) in enumerate(df.groupby("driver")):
-        color = _DRIVER_COLORS[i % len(_DRIVER_COLORS)]
+        color = _driver_color(driver, i)
         fig.add_trace(go.Scatter(
             x=g["round"], y=g["points"],
             mode="lines+markers",
@@ -195,7 +335,7 @@ def chart_race_positions_2d(traj_df: pd.DataFrame) -> go.Figure:
     fig = go.Figure(layout=layout)
 
     for i, (driver, g) in enumerate(df.groupby("driver")):
-        color = _DRIVER_COLORS[i % len(_DRIVER_COLORS)]
+        color = _driver_color(driver, i)
         fig.add_trace(go.Scatter(
             x=g["round"], y=g["position"],
             mode="lines+markers",
@@ -227,13 +367,13 @@ def chart_grid_finish_2d(df: pd.DataFrame) -> go.Figure:
         x=[1, mx], y=[1, mx],
         mode="lines",
         name="no change",
-        line=dict(color=_RED, width=1, dash="dot"),
+        line=dict(color="#444444", width=1, dash="dot"),
         showlegend=False,
         hoverinfo="skip",
     ))
 
     for i, (driver, g) in enumerate(df.groupby("driver")):
-        color = _DRIVER_COLORS[i % len(_DRIVER_COLORS)]
+        color = _driver_color(driver, i)
         delta = g["grid"] - g["finish"]   # positive = gained positions
         fig.add_trace(go.Scatter(
             x=g["grid"], y=g["finish"],
@@ -274,7 +414,7 @@ def generate_dashboard(
     fig2 = chart_race_positions_2d(traj)
     fig3 = chart_grid_finish_2d(gf)
 
-    _cfg = {"displayModeBar": "hover", "scrollZoom": True}
+    _cfg = {"displayModeBar": "hover", "scrollZoom": False}
     div1 = fig1.to_html(full_html=False, include_plotlyjs="cdn",  config=_cfg)
     div2 = fig2.to_html(full_html=False, include_plotlyjs=False, config=_cfg)
     div3 = fig3.to_html(full_html=False, include_plotlyjs=False, config=_cfg)

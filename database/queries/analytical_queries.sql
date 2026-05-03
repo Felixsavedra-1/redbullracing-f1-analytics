@@ -6,7 +6,7 @@
 -- 0. DRIVER SUMMARY (Red Bull family: main team + junior team)
 -- ============================================================
 
--- Career stats per driver across Red Bull Racing and AlphaTauri/RB (2020-2025)
+-- Career stats per driver for Red Bull Racing (2020-2025)
 SELECT
     d.forename || ' ' || d.surname AS driver,
     GROUP_CONCAT(DISTINCT con.constructor_name) AS team,
@@ -23,7 +23,7 @@ FROM results res
 JOIN races        r   ON res.race_id        = r.race_id
 JOIN drivers      d   ON res.driver_id      = d.driver_id
 JOIN constructors con ON res.constructor_id = con.constructor_id
-WHERE con.constructor_ref IN ('red_bull', 'alphatauri', 'rb')
+WHERE con.constructor_ref = 'red_bull'
 GROUP BY d.driver_id, d.forename, d.surname
 ORDER BY points DESC;
 

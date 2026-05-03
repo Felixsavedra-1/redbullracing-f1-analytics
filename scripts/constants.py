@@ -9,11 +9,13 @@ try:
     TEAM_NAME: str = TEAM_CONFIG["name"]
     TEAM_COLORS: dict = TEAM_CONFIG.get("colors", {})
 except ImportError:
-    TEAM_REFS = ["red_bull", "alphatauri", "rb"]
-    TEAM_NAME = "Red Bull"
+    TEAM_REFS = ["red_bull"]
+    TEAM_NAME = "Oracle Red Bull Racing"
     TEAM_COLORS = {}
 except KeyError as e:
     raise KeyError(f"config.py is present but missing required key: {e}") from e
+
+CONSTRUCTOR_ID = 9  # Oracle Red Bull Racing in the Ergast API
 
 TEAM_COLORS.setdefault("primary", "#C9A96E")
 TEAM_COLORS.setdefault("accent",  "#8B5E3C")

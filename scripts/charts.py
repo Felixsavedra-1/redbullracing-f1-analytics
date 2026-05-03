@@ -7,25 +7,29 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 
 _PALETTE = [
-    "#C9A96E", "#8B5E3C", "#D4B483", "#6B3A2A",
-    "#E8C99A", "#A67C52", "#F0DDB8", "#7A4F30",
+    "#1E41FF", "#FF1800", "#FFD700", "#FFFFFF",
+    "#00B4FF", "#FF6B35", "#C8FF00", "#AAAAAA",
 ]
 
 _RC: dict = {
+    # background / spines
     "figure.facecolor":     "#1C1C1C",
     "axes.facecolor":       "#232323",
     "axes.spines.top":      False,
     "axes.spines.right":    False,
-    "axes.edgecolor":       "#555555",
+    "axes.edgecolor":       "#FFD700",
+    # grid
     "axes.grid":            True,
     "axes.grid.axis":       "y",
     "grid.alpha":           0.22,
     "grid.linewidth":       0.6,
     "grid.color":           "#444444",
-    "text.color":           "#D4C5A9",
-    "axes.labelcolor":      "#D4C5A9",
-    "xtick.color":          "#D4C5A9",
-    "ytick.color":          "#D4C5A9",
+    # text / tick colors
+    "text.color":           "#FFFFFF",
+    "axes.labelcolor":      "#FFFFFF",
+    "xtick.color":          "#AAAAAA",
+    "ytick.color":          "#AAAAAA",
+    # typography
     "font.family":          "sans-serif",
     "font.size":            10,
     "axes.titlesize":       12,
@@ -33,10 +37,12 @@ _RC: dict = {
     "axes.labelsize":       10,
     "xtick.labelsize":      9,
     "ytick.labelsize":      9,
+    # legend
     "legend.fontsize":      9,
     "legend.frameon":       False,
     "legend.facecolor":     "#232323",
     "legend.edgecolor":     "#444444",
+    # lines / export
     "lines.linewidth":      2.2,
     "patch.linewidth":      0.5,
     "figure.dpi":           150,
@@ -48,8 +54,9 @@ matplotlib.rcParams.update(_RC)
 
 
 def _driver_colors(names: list[str], primary: str) -> dict[str, str]:
+    ordered = sorted(names, key=lambda n: (0 if "Verstappen" in n else 1, n))
     palette = [primary] + [c for c in _PALETTE if c != primary]
-    return {name: palette[i % len(palette)] for i, name in enumerate(names)}
+    return {name: palette[i % len(palette)] for i, name in enumerate(ordered)}
 
 
 def _sig_label(p: float) -> str:
@@ -127,15 +134,9 @@ def teammate_delta_chart(
     fig, ax = plt.subplots(figsize=(9, max(3.5, n_pairs * 0.9)))
 
     y_pos = list(range(n_pairs))
-    labels = [
-        f"{r.driver_a.split()[-1]} / {r.driver_b.split()[-1]}"
-        for _, r in df.iterrows()
-    ]
-    bar_colors = [primary if r.mean_delta < 0 else accent for _, r in df.iterrows()]
-    xerr = np.array([
-        [r.mean_delta - r.ci_lower, r.ci_upper - r.mean_delta]
-        for _, r in df.iterrows()
-    ]).T
+    labels = (df["driver_a"].str.split().str[-1] + " / " + df["driver_b"].str.split().str[-1]).tolist()
+    bar_colors = np.where(df["mean_delta"] < 0, primary, accent).tolist()
+    xerr = np.column_stack([df["mean_delta"] - df["ci_lower"], df["ci_upper"] - df["mean_delta"]]).T
 
     ax.barh(y_pos, df["mean_delta"].tolist(), xerr=xerr,
             color=bar_colors, alpha=0.82,
@@ -183,7 +184,7 @@ def qualifying_regression(
 
     x = np.linspace(df["grid"].min(), df["grid"].max(), 120)
     ax.plot(x, ols_stats["intercept"] + ols_stats["slope"] * x,
-            color="#E8C99A", linewidth=2, zorder=5, label="_fit")
+            color="#FFD700", linewidth=2, zorder=5, label="_fit")
 
     p = ols_stats["p_value"]
     p_str = "p < 0.001" if p < 0.001 else ("n/a" if pd.isna(p) else f"p = {p:.4f}")
@@ -226,10 +227,7 @@ def pit_stops_chart(
     )
     ax.axhline(0, color="#888888", linewidth=1, linestyle="--", alpha=0.55)
     ax.set_xticks(x)
-    ax.set_xticklabels(
-        [row["driver"].split()[-1] for _, row in df.iterrows()],
-        rotation=30, ha="right",
-    )
+    ax.set_xticklabels(df["driver"].str.split().str[-1].tolist(), rotation=30, ha="right")
     ax.set_ylabel("Z-score vs Season Average")
     ax.set_title("Pit Stop Efficiency  (z < 0 = faster than field)")
 
@@ -255,19 +253,17 @@ def reliability_chart(
     fig, ax = plt.subplots(figsize=(8, max(3.5, len(df) * 0.65)))
 
     y_pos = list(range(len(df)))
-    xerr = np.array([
-        [row["rate"] - row["ci_lower"], row["ci_upper"] - row["rate"]]
-        for _, row in df.iterrows()
-    ]).T
+    xerr = np.column_stack([df["rate"] - df["ci_lower"], df["ci_upper"] - df["rate"]]).T
 
     ax.barh(y_pos, df["rate"].tolist(), xerr=xerr,
             color=primary, alpha=0.78,
             error_kw={"linewidth": 1.4, "capsize": 4, "color": "#CCBBAA"})
     ax.set_yticks(y_pos)
-    ax.set_yticklabels([
-        f"{row['driver'].split()[-1]}  ({int(row['dnfs'])}/{int(row['races'])})"
-        for _, row in df.iterrows()
-    ])
+    ax.set_yticklabels(
+        (df["driver"].str.rsplit(" ", n=1).str[-1] + "  ("
+         + df["dnfs"].astype(int).astype(str) + "/"
+         + df["races"].astype(int).astype(str) + ")").tolist()
+    )
     ax.set_xlabel("DNF Rate per Race  (95% Poisson CI)")
     ax.set_title("Reliability — DNF Rate by Driver")
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=0))

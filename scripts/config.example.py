@@ -1,12 +1,12 @@
 # Copy this file to config.py. Do not commit config.py to version control.
 
 # --- Team ---
-# family_refs: All constructor_ref values in the team family (must match values in the
-#              constructors table — check with: SELECT constructor_ref FROM constructors)
+# family_refs: constructor_ref value(s) to include (must match constructors table —
+#              check with: SELECT constructor_ref FROM constructors)
 # name:        Display name shown in terminal output
 TEAM_CONFIG = {
-    "family_refs": ["red_bull", "alphatauri", "rb"],
-    "name": "Red Bull",
+    "family_refs": ["red_bull"],
+    "name": "Oracle Red Bull Racing",
     "colors": {
         "primary": "#C9A96E",   # primary chart color
         "accent":  "#8B5E3C",   # secondary / highlight color
@@ -37,11 +37,3 @@ DATA_PATHS = {
     "processed_data": "data/processed/",
 }
 
-# --- Extraction ---
-EXTRACTION_CONFIG = {
-    "start_year": 2020,
-    "end_year": 2025,
-    "base_delay": 1.5,
-    "max_retries": 6,
-    "max_base_delay": 8.0,
-}

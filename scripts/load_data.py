@@ -13,6 +13,7 @@ if SCRIPT_DIR not in sys.path:
 
 from logging_utils import setup_logging
 from schema_contracts import validate_dataframe, SCHEMA_CONTRACTS
+from constants import CONSTRUCTOR_ID
 
 _log = logging.getLogger("f1_analytics")
 
@@ -57,6 +58,7 @@ class F1DataLoader:
         self.run_id = run_id or str(uuid.uuid4())
         self.source_url = source_url
         self.logger = setup_logging()
+        self._rb_driver_ids: set = set()
         self._connect()
         self._ensure_metadata_tables()
 
@@ -352,6 +354,16 @@ class F1DataLoader:
             [], {}),
     ]
 
+    def _filter_team(self, df: pd.DataFrame, table: str) -> pd.DataFrame:
+        if "constructor_id" in df.columns:
+            df = df[df["constructor_id"] == CONSTRUCTOR_ID].copy()
+            if table == "results":
+                self._rb_driver_ids = set(df["driver_id"].dropna().astype(int))
+            return df
+        if table in ("pit_stops", "driver_standings") and self._rb_driver_ids:
+            return df[df["driver_id"].isin(self._rb_driver_ids)].copy()
+        return df
+
     def _load_from_spec(self, table: str, csv_name: str, cols, datetime_cols, fillna_defaults) -> None:
         if csv_name.startswith("raw:"):
             path = os.path.join(self.raw_path, csv_name[4:])
@@ -367,6 +379,8 @@ class F1DataLoader:
         except pd.errors.EmptyDataError:
             self.logger.warning("%s has no columns; skipping load.", csv_name)
             return
+
+        df = self._filter_team(df, table)
 
         for col in datetime_cols:
             if col in df.columns:

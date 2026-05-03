@@ -54,22 +54,14 @@ ORDER BY points DESC
 """
 
 _TEAM_SHORT = {
-    "Oracle Red Bull Racing":              "Red Bull",
-    "Red Bull Racing":                     "Red Bull",
-    "Scuderia AlphaTauri":                 "AlphaTauri",
-    "Visa Cash App RB Formula One Team":   "RB",
-    "RB Formula One Team":                 "RB",
+    "Oracle Red Bull Racing": "Red Bull",
+    "Red Bull Racing":        "Red Bull",
 }
 
 
 def _shorten_teams(raw: str) -> str:
     parts = [_TEAM_SHORT.get(t.strip(), t.strip()) for t in raw.split(",")]
-    seen, unique = set(), []
-    for p in parts:
-        if p not in seen:
-            seen.add(p)
-            unique.append(p)
-    return " · ".join(unique)
+    return " · ".join(dict.fromkeys(parts))
 
 
 def _print_driver_summary(engine) -> None:
@@ -88,7 +80,7 @@ def _print_driver_summary(engine) -> None:
             lambda r: f"{int(r.from_yr)}–{int(r.to_yr) % 100:02d}", axis=1
         )
         df["points"] = df["points"].astype(int)
-        year_range = f"{int(df['from_yr'].min())}–{int(df['to_yr'].max())}" if not df.empty else ""
+        year_range = f"{int(df['from_yr'].min())}–{int(df['to_yr'].max())}"
         df = df[["driver", "team", "period", "races", "points",
                  "wins", "podiums", "avg_finish", "dnfs"]]
 

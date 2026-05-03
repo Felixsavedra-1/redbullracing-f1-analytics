@@ -1,6 +1,5 @@
 import logging
 import sys
-from typing import List, Set
 
 
 class _CleanFormatter(logging.Formatter):
@@ -29,7 +28,7 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
     return logger
 
 
-def format_table(headers: List[str], rows: list, right_cols: Set[int] = None) -> str:
+def format_table(headers: list[str], rows: list, right_cols: set[int] = None) -> str:
     """Return a fixed-width text table. right_cols is a set of column indices to right-align."""
     right_cols = right_cols or set()
     ncols = len(headers)
